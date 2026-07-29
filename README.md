@@ -5,10 +5,7 @@ limits you have burned through, and when they reset.
 
 *Read this in [Français](README.fr.md).*
 
-```
-  ✳  5h  42% ▓▓▓▓▓▓░░░░░░░  3h05
-     7d  17% ▓▓░░░░░░░░░░░  4d 6h
-```
+<img src="docs/screenshot.png" alt="The widget showing a 31% five-hour session and 60% weekly usage" width="382">
 
 It sits above the taskbar and never disappears behind it, because the
 executable is built with the `uiAccess` privilege — the same one the Magnifier
@@ -18,6 +15,9 @@ and the on-screen keyboard use.
 
 - 5-hour session and 7-day usage, with a countdown to each reset
 - Colour shifts from orange to red as you approach the limit
+- **Gets out of the way of games**: hides itself while a full-screen app is in
+  the foreground, including borderless-fullscreen, and stops re-asserting
+  topmost so it cannot kick a game out of its display mode
 - Hover for the full breakdown, drag to move, position is remembered
 - Goes visibly stale — amber then red border, gauges fade — when the data is
   more than 12 minutes old, so a frozen number never looks like a fresh one
@@ -101,6 +101,10 @@ switches back automatically if IPv6 is the only working path.
 
 **`Claude Code is not signed in`.** Run Claude Code once so that
 `~/.claude/.credentials.json` exists.
+
+**The widget vanished.** A full-screen application is in the foreground; it
+comes back on its own. Untick *Hide in full-screen apps* to keep it visible
+over full-screen video, at the cost of it reappearing over games.
 
 ## Uninstall
 

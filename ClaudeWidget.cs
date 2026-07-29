@@ -55,6 +55,10 @@ namespace ClaudeWidgetApp
         [DataMember] public double Y = -99999;
         [DataMember] public double Opacity = 1.0;
         [DataMember] public string Lang = "en";
+        // Nullable on purpose: DataContractJsonSerializer skips field
+        // initializers, so a plain bool absent from an older config file would
+        // read back as false - the opposite of the intended default.
+        [DataMember] public bool? HideFullScreen;
     }
 
     // ---------- localization ----------
@@ -78,8 +82,8 @@ namespace ClaudeWidgetApp
         public string DayUnit, HourUnit, MinuteUnit;
 
         public string MenuRefresh, MenuMoveBottomLeft, MenuOpacity,
-                      MenuStartWithWindows, MenuOpenLog, MenuRestart,
-                      MenuLanguage, MenuQuit;
+                      MenuStartWithWindows, MenuHideFullScreen, MenuOpenLog,
+                      MenuRestart, MenuLanguage, MenuQuit;
 
         public string ErrNotSignedIn, ErrBadResponse;
     }
@@ -115,6 +119,7 @@ namespace ClaudeWidgetApp
                 MenuMoveBottomLeft = "Move to bottom left",
                 MenuOpacity = "Opacity",
                 MenuStartWithWindows = "Start with Windows",
+                MenuHideFullScreen = "Hide in full-screen apps",
                 MenuOpenLog = "Open log",
                 MenuRestart = "Restart widget",
                 MenuLanguage = "Language",
@@ -142,6 +147,7 @@ namespace ClaudeWidgetApp
                 MenuMoveBottomLeft = "Replacer en bas à gauche",
                 MenuOpacity = "Opacité",
                 MenuStartWithWindows = "Lancer au démarrage de Windows",
+                MenuHideFullScreen = "Masquer en plein écran",
                 MenuOpenLog = "Ouvrir le journal",
                 MenuRestart = "Redémarrer le widget",
                 MenuLanguage = "Langue",
@@ -169,6 +175,7 @@ namespace ClaudeWidgetApp
                 MenuMoveBottomLeft = "Mover abajo a la izquierda",
                 MenuOpacity = "Opacidad",
                 MenuStartWithWindows = "Iniciar con Windows",
+                MenuHideFullScreen = "Ocultar en pantalla completa",
                 MenuOpenLog = "Abrir el registro",
                 MenuRestart = "Reiniciar el widget",
                 MenuLanguage = "Idioma",
@@ -196,6 +203,7 @@ namespace ClaudeWidgetApp
                 MenuMoveBottomLeft = "Unten links platzieren",
                 MenuOpacity = "Deckkraft",
                 MenuStartWithWindows = "Mit Windows starten",
+                MenuHideFullScreen = "Bei Vollbild ausblenden",
                 MenuOpenLog = "Protokoll öffnen",
                 MenuRestart = "Widget neu starten",
                 MenuLanguage = "Sprache",
@@ -529,9 +537,22 @@ namespace ClaudeWidgetApp
         static readonly IntPtr HWND_NOTOPMOST = new IntPtr(-2);
         const uint SWP_FLAGS = 0x1 | 0x2 | 0x10;
 
+        [StructLayout(LayoutKind.Sequential)]
+        struct RECT { public int Left, Top, Right, Bottom; }
+        [StructLayout(LayoutKind.Sequential)]
+        struct MONITORINFO { public int cbSize; public RECT rcMonitor, rcWork; public uint dwFlags; }
+
+        [DllImport("user32.dll")] static extern IntPtr GetForegroundWindow();
+        [DllImport("user32.dll")] static extern bool GetWindowRect(IntPtr hWnd, out RECT r);
+        [DllImport("user32.dll")] static extern IntPtr MonitorFromWindow(IntPtr hWnd, uint flags);
+        [DllImport("user32.dll")] static extern bool GetMonitorInfo(IntPtr hMonitor, ref MONITORINFO mi);
+        [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+        static extern int GetClassName(IntPtr hWnd, StringBuilder buf, int count);
+        const uint MONITOR_DEFAULTTONEAREST = 2;
+
         StackPanel _rows;
         Border _root;
-        TextBlock _status;
+        bool _hiddenForFullScreen;
         Usage _last;
         DateTime _lastTs;
         string _lastErr;
@@ -541,6 +562,10 @@ namespace ClaudeWidgetApp
         DispatcherTimer _poll;
 
         static Strings L { get { return I18n.T; } }
+
+        // Width reserved for the logo; the rows keep the same total width as
+        // before, so the layout is unchanged apart from the logo itself.
+        const double LogoColumn = 20;
 
         static string CfgDir
         {
@@ -589,15 +614,35 @@ namespace ClaudeWidgetApp
                 BorderThickness = new Thickness(1),
                 Padding = new Thickness(8, 3, 8, 3)
             };
+            // The logo lives in its own full-height column rather than inside
+            // the first row: sitting in an 18px row of a 36px widget, it read
+            // as pushed towards the top. Left-aligned in a 20px column, it also
+            // sits a few pixels further left than when it was centred in 22px.
+            var shell = new Grid();
+            shell.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(LogoColumn) });
+            shell.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+            var logo = new ContentControl
+            {
+                Content = ClaudeLogo(14),
+                HorizontalAlignment = HorizontalAlignment.Left,
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            Grid.SetColumn(logo, 0);
+            shell.Children.Add(logo);
+
             _rows = new StackPanel
             {
                 Orientation = Orientation.Vertical,
-                MinHeight = 36
+                MinHeight = 36,
+                VerticalAlignment = VerticalAlignment.Center
             };
-            _root.Child = _rows;
+            Grid.SetColumn(_rows, 1);
+            shell.Children.Add(_rows);
+
+            _root.Child = shell;
             Content = _root;
 
-            _status = new TextBlock();
             BuildMenu();
             Redraw();
 
@@ -624,9 +669,49 @@ namespace ClaudeWidgetApp
             };
         }
 
+        // A game running borderless-fullscreen is just a window covering the
+        // whole monitor, so SHQueryUserNotificationState misses it - which is
+        // exactly the common case. We compare the foreground window to its
+        // monitor instead. rcMonitor, not rcWork: a merely maximized window
+        // stops at the taskbar and must NOT count as full screen.
+        static bool ForegroundIsFullScreen(IntPtr self)
+        {
+            IntPtr fg = GetForegroundWindow();
+            if (fg == IntPtr.Zero || fg == self) return false;
+
+            // The desktop and the shell permanently span the screen.
+            var cls = new StringBuilder(64);
+            GetClassName(fg, cls, cls.Capacity);
+            string c = cls.ToString();
+            if (c == "Progman" || c == "WorkerW" || c == "Shell_TrayWnd" ||
+                c == "Windows.UI.Core.CoreWindow") return false;
+
+            RECT r;
+            if (!GetWindowRect(fg, out r)) return false;
+            IntPtr mon = MonitorFromWindow(fg, MONITOR_DEFAULTTONEAREST);
+            if (mon == IntPtr.Zero) return false;
+            var mi = new MONITORINFO();
+            mi.cbSize = Marshal.SizeOf(typeof(MONITORINFO));
+            if (!GetMonitorInfo(mon, ref mi)) return false;
+
+            return r.Left <= mi.rcMonitor.Left && r.Top <= mi.rcMonitor.Top
+                && r.Right >= mi.rcMonitor.Right && r.Bottom >= mi.rcMonitor.Bottom;
+        }
+
         void AssertTop()
         {
             if (_hwnd == IntPtr.Zero) return;
+
+            bool hide = (_cfg.HideFullScreen ?? true) && ForegroundIsFullScreen(_hwnd);
+            if (hide != _hiddenForFullScreen)
+            {
+                _hiddenForFullScreen = hide;
+                Visibility = hide ? Visibility.Hidden : Visibility.Visible;
+            }
+            // Re-asserting topmost over a full-screen game can kick it out of
+            // its display mode or stutter it, so we stop entirely while hidden.
+            if (hide) return;
+
             SetWindowPos(_hwnd, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_FLAGS);
             SetWindowPos(_hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_FLAGS);
         }
@@ -721,50 +806,29 @@ namespace ClaudeWidgetApp
         {
             _rows.Children.Clear();
             _rows.Opacity = 1.0;
+            _root.BorderBrush = B("#22FFFFFF");
+            // A Grid centres the text properly; a bare TextBlock in a
+            // StackPanel would sit at the top of the 36px band.
             var row = new Grid { Height = 36 };
-            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(22) });
-            row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-            var logo = new ContentControl
-            {
-                Content = ClaudeLogo(14),
-                VerticalAlignment = VerticalAlignment.Center
-            };
-            Grid.SetColumn(logo, 0);
-            row.Children.Add(logo);
-            var message = new TextBlock
+            row.Children.Add(new TextBlock
             {
                 Text = msg,
                 FontSize = 10,
                 Foreground = B("#9BA0B5"),
                 VerticalAlignment = VerticalAlignment.Center
-            };
-            Grid.SetColumn(message, 1);
-            row.Children.Add(message);
+            });
             _rows.Children.Add(row);
         }
 
-        void AddPart(string shortLabel, string fullLabel, Limit d, List<string> tips, ref bool first)
+        void AddPart(string shortLabel, string fullLabel, Limit d, List<string> tips)
         {
             if (d == null || !d.utilization.HasValue) return;
             double pct = Math.Max(0, Math.Min(100, d.utilization.Value));
-            var row = new Grid { Height = 18, Width = 188 };
-            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(22) });
+            var row = new Grid { Height = 18, Width = 166 };
             row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(24) });
             row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(36) });
             row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(62) });
             row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(44) });
-
-            if (first)
-            {
-                var logo = new ContentControl
-                {
-                    Content = ClaudeLogo(14),
-                    VerticalAlignment = VerticalAlignment.Center
-                };
-                Grid.SetColumn(logo, 0);
-                row.Children.Add(logo);
-            }
-            first = false;
 
             var label = new TextBlock
             {
@@ -773,7 +837,7 @@ namespace ClaudeWidgetApp
                 Foreground = B("#6C7086"),
                 VerticalAlignment = VerticalAlignment.Center
             };
-            Grid.SetColumn(label, 1);
+            Grid.SetColumn(label, 0);
             row.Children.Add(label);
 
             string pctText = (int)Math.Round(pct) + "%";
@@ -785,11 +849,11 @@ namespace ClaudeWidgetApp
                 Foreground = B(PctHex(pct)),
                 VerticalAlignment = VerticalAlignment.Center
             };
-            Grid.SetColumn(percent, 2);
+            Grid.SetColumn(percent, 1);
             row.Children.Add(percent);
 
             var bar = Bar(pct, 58, 4);
-            Grid.SetColumn(bar, 3);
+            Grid.SetColumn(bar, 2);
             row.Children.Add(bar);
 
             string reset = FmtReset(d.resets_at);
@@ -803,7 +867,7 @@ namespace ClaudeWidgetApp
                     TextAlignment = TextAlignment.Right,
                     VerticalAlignment = VerticalAlignment.Center
                 };
-                Grid.SetColumn(resetText, 4);
+                Grid.SetColumn(resetText, 3);
                 row.Children.Add(resetText);
                 tips.Add(fullLabel + L.Colon + pctText + " (" + string.Format(L.ResetsIn, reset) + ")");
             }
@@ -831,9 +895,8 @@ namespace ClaudeWidgetApp
             if (_last == null) return;
             _rows.Children.Clear();
             var tips = new List<string>();
-            bool first = true;
-            AddPart(L.Short5h, L.Session5h, _last.five_hour, tips, ref first);
-            AddPart(L.Short7d, L.Week, _last.seven_day, tips, ref first);
+            AddPart(L.Short5h, L.Session5h, _last.five_hour, tips);
+            AddPart(L.Short7d, L.Week, _last.seven_day, tips);
             tips.Add(string.Format(L.Updated, _lastTs.ToString("HH:mm")));
             if (_lastErr != null)
             {
@@ -969,6 +1032,25 @@ namespace ClaudeWidgetApp
                 catch { }
             };
             menu.Items.Add(miA);
+
+            var miFs = new MenuItem
+            {
+                Header = L.MenuHideFullScreen,
+                IsCheckable = true,
+                IsChecked = _cfg.HideFullScreen ?? true
+            };
+            miFs.Click += delegate
+            {
+                _cfg.HideFullScreen = miFs.IsChecked;
+                SaveConfig();
+                // Unticking it while hidden must bring the widget straight back.
+                if (!miFs.IsChecked && _hiddenForFullScreen)
+                {
+                    _hiddenForFullScreen = false;
+                    Visibility = Visibility.Visible;
+                }
+            };
+            menu.Items.Add(miFs);
 
             var miLog = new MenuItem { Header = L.MenuOpenLog };
             miLog.Click += delegate
