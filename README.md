@@ -1,0 +1,116 @@
+# Claude Usage Widget
+
+A tiny always-on-top gauge for Windows showing how much of your Claude usage
+limits you have burned through, and when they reset.
+
+*Read this in [Français](README.fr.md).*
+
+```
+  ✳  5h  42% ▓▓▓▓▓▓░░░░░░░  3h05
+     7d  17% ▓▓░░░░░░░░░░░  4d 6h
+```
+
+It sits above the taskbar and never disappears behind it, because the
+executable is built with the `uiAccess` privilege — the same one the Magnifier
+and the on-screen keyboard use.
+
+## Features
+
+- 5-hour session and 7-day usage, with a countdown to each reset
+- Colour shifts from orange to red as you approach the limit
+- Hover for the full breakdown, drag to move, position is remembered
+- Goes visibly stale — amber then red border, gauges fade — when the data is
+  more than 12 minutes old, so a frozen number never looks like a fresh one
+- Adjustable opacity, optional start with Windows
+- **English, Français, Español, Deutsch** — right-click → Language
+
+## Requirements
+
+- Windows 10 or 11
+- .NET Framework 4.x (present on every supported Windows — nothing to install)
+- [Claude Code](https://claude.com/claude-code) installed and signed in once
+
+## Install
+
+1. Download or clone this repository
+2. Double-click **`Installer.bat`**
+3. Accept the administrator prompt
+
+The window shows `[OK]` and the widget appears in the bottom-left corner.
+Right-click it for language, opacity, autostart and quit.
+
+### What the installer does
+
+- Builds `ClaudeWidget.cs` **on your machine** with the C# compiler already
+  included in Windows. Nothing is downloaded, no build toolchain is needed.
+- Creates a self-signed certificate `CN=ClaudeWidget Local` and adds it to the
+  machine's trusted root store. Windows only grants `uiAccess` to a signed
+  executable installed under `Program Files`, so both steps are mandatory for
+  the widget to stay above the taskbar. **Adding a root certificate is not a
+  trivial change** — see [Uninstall](#uninstall) to remove it.
+- Copies the signed binary to `C:\Program Files\ClaudeWidget\` and starts it.
+
+## What it reads and writes
+
+This program handles your Claude Code credentials. In full:
+
+| Path | Access | Why |
+|---|---|---|
+| `%USERPROFILE%\.claude\.credentials.json` | read **and write** | reads the OAuth token to query your usage; writes the refreshed token back (see below) |
+| `%APPDATA%\ClaudeWidget\tokens.json` | write | local token cache |
+| `%APPDATA%\ClaudeWidget\config.json` | write | position, opacity, language |
+| `%APPDATA%\ClaudeWidget\log.txt` | write | diagnostics, capped at 128 KB — **never contains tokens** |
+
+**Why it writes back to `.credentials.json`:** the OAuth server rotates refresh
+tokens — using one invalidates the previous one. An earlier version kept the
+new token to itself, which left Claude Code holding a dead token and forced a
+`/login` every few hours. The widget therefore patches `accessToken`,
+`refreshToken` and `expiresAt` back into the file, in place, leaving every
+other field untouched.
+
+Your tokens are sent to `api.anthropic.com`, `platform.claude.com` and
+`console.anthropic.com`, and nowhere else. There is no telemetry.
+
+The usage endpoint (`/api/oauth/usage`) is not a documented public API. It can
+change or disappear without notice, and this project is not affiliated with
+Anthropic.
+
+## Adding a language
+
+Everything lives in the `I18n` class in `ClaudeWidget.cs`. Copy one of the
+`English()` / `French()` blocks, translate the ~25 values, and append it to
+`Catalog`:
+
+```csharp
+public static readonly Strings[] Catalog = { English(), French(), Spanish(), German(), Italian() };
+```
+
+The language menu and the config file are both driven by `Catalog` — there is
+nothing else to wire up. Keep `Short5h` / `Short7d` very short, they render in a
+24-pixel column. Save the file as **UTF-8 with a BOM**; pull requests welcome.
+
+## Troubleshooting
+
+**The numbers stop updating.** Right-click → *Open log*
+(`%APPDATA%\ClaudeWidget\log.txt`) gives the exact reason for the last failure.
+
+**Nothing refreshes at all, and the log shows timeouts.** The widget requests
+IPv4 on purpose: on a router that advertises an IPv6 prefix without actually
+routing it, an IPv6 request hangs until the timeout and the gauge freezes. It
+switches back automatically if IPv6 is the only working path.
+
+**`Claude Code is not signed in`.** Run Claude Code once so that
+`~/.claude/.credentials.json` exists.
+
+## Uninstall
+
+1. Right-click the widget → *Quit*
+2. Delete `C:\Program Files\ClaudeWidget`
+3. Delete `%APPDATA%\ClaudeWidget`
+4. Remove the certificate: `certlm.msc` → *Trusted Root Certification
+   Authorities* → *Certificates* → delete **ClaudeWidget Local**, then do the
+   same under *Trusted Publishers* and *Personal*
+
+## License
+
+MIT — see [LICENSE](LICENSE).
