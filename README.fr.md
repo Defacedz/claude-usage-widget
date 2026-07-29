@@ -5,10 +5,7 @@ limites d'utilisation Claude et quand elles se réinitialisent.
 
 *Read this in [English](README.md).*
 
-```
-  ✳  5h  42% ▓▓▓▓▓▓░░░░░░░  3h05
-     7j  17% ▓▓░░░░░░░░░░░  4j 6h
-```
+<img src="docs/screenshot.png" alt="Le widget affichant 31 % de session 5 h et 60 % d'usage hebdomadaire" width="382">
 
 Elle se place au-dessus de la barre des tâches et ne passe jamais derrière,
 car l'exécutable est compilé avec le privilège `uiAccess` — le même que la
@@ -18,6 +15,10 @@ Loupe ou le clavier visuel.
 
 - Session de 5 h et semaine glissante, avec le compte à rebours de chaque reset
 - La couleur passe de l'orange au rouge à l'approche de la limite
+- **Ne gêne pas les jeux** : la jauge se masque dès qu'une application plein
+  écran est au premier plan, y compris en plein écran sans bordure, et cesse
+  de se remettre au premier plan — elle ne peut donc plus faire sortir un jeu
+  de son mode d'affichage
 - Survol pour le détail, glisser pour déplacer, position mémorisée
 - Vieillissement visible — contour orange puis rouge, jauges estompées — dès que
   les données ont plus de 12 minutes : un chiffre figé ne ressemble jamais à un
@@ -106,6 +107,10 @@ fonctionne.
 
 **`Claude Code n'est pas connecté`.** Lancez Claude Code une fois pour que
 `~/.claude/.credentials.json` existe.
+
+**Le widget a disparu.** Une application plein écran est au premier plan ; il
+revient tout seul. Décochez *Masquer en plein écran* pour le garder visible
+par-dessus une vidéo en plein écran — au prix de son retour par-dessus les jeux.
 
 ## Désinstallation
 
