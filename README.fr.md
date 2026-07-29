@@ -34,12 +34,26 @@ Loupe ou le clavier visuel.
 
 ## Installation
 
-1. Téléchargez ou clonez ce dépôt
-2. Double-cliquez sur **`Installer.bat`**
-3. Acceptez la demande d'élévation
+Collez ceci dans **PowerShell** et acceptez la demande d'élévation :
 
-La fenêtre affiche `[OK]` et le widget apparaît en bas à gauche. Clic droit
-pour la langue, l'opacité, le démarrage automatique et quitter.
+```powershell
+irm https://raw.githubusercontent.com/Defacedz/claude-usage-widget/main/web-install.ps1 | iex
+```
+
+Ou depuis **cmd.exe** :
+
+```bat
+powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/Defacedz/claude-usage-widget/main/web-install.ps1 | iex"
+```
+
+Cette commande télécharge le dépôt dans un dossier temporaire et lance
+`Installer.ps1`. Si vous préférez lire avant d'exécuter — le bon réflexe face à
+n'importe quelle commande `| iex`, et plus encore pour un programme qui touche
+à vos identifiants — clonez le dépôt et double-cliquez sur `Installer.bat`.
+
+Dans les deux cas, la fenêtre affiche `[OK]` et le widget apparaît en bas à
+gauche. Clic droit pour la langue, l'opacité, le démarrage automatique et
+quitter.
 
 ### Ce que fait l'installateur
 

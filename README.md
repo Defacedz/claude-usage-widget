@@ -32,12 +32,25 @@ and the on-screen keyboard use.
 
 ## Install
 
-1. Download or clone this repository
-2. Double-click **`Installer.bat`**
-3. Accept the administrator prompt
+Paste this into **PowerShell** and accept the administrator prompt:
 
-The window shows `[OK]` and the widget appears in the bottom-left corner.
-Right-click it for language, opacity, autostart and quit.
+```powershell
+irm https://raw.githubusercontent.com/Defacedz/claude-usage-widget/main/web-install.ps1 | iex
+```
+
+Or from **cmd.exe**:
+
+```bat
+powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/Defacedz/claude-usage-widget/main/web-install.ps1 | iex"
+```
+
+That downloads this repository to a temporary folder and runs `Installer.ps1`.
+If you would rather see what you are running first — which is the sensible
+habit with any `| iex` command, and doubly so for a program that touches your
+credentials — clone the repository and double-click `Installer.bat` instead.
+
+Either way the window shows `[OK]` and the widget appears in the bottom-left
+corner. Right-click it for language, opacity, autostart and quit.
 
 ### What the installer does
 
