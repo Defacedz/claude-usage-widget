@@ -39,6 +39,10 @@ Loupe ou le clavier visuel.
 
 <img src="docs/screenshot-usage.png" alt="Le graphique de conso locale : tokens neufs par jour sur deux mois" width="480">
 
+**macOS** : une version pour la barre de menus vit dans
+[`mac/`](mac/README.md) — mêmes jauges, même gestion sûre du jeton via le
+trousseau, compilée depuis les sources avec les outils gratuits d'Apple.
+
 ## Prérequis
 
 - Windows 10 ou 11

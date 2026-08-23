@@ -36,6 +36,10 @@ and the on-screen keyboard use.
 
 <img src="docs/screenshot-usage.png" alt="The local usage chart: stacked daily new tokens over two months" width="480">
 
+**macOS**: a menu-bar version lives in [`mac/`](mac/README.md) — same gauges,
+same keychain-safe token handling, built from source with the free Xcode
+Command Line Tools.
+
 ## Requirements
 
 - Windows 10 or 11
