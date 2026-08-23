@@ -23,6 +23,18 @@ and the on-screen keyboard use.
   more than 12 minutes old, so a frozen number never looks like a fresh one
 - Adjustable opacity, optional start with Windows
 - **English, Français, Español, Deutsch** — right-click → Language
+- **Local usage chart** — right-click → *Local usage details*: a stacked daily
+  chart of new tokens (cache writes vs prompts + answers) over the current and
+  previous month, computed from your local Claude Code transcripts. Nothing
+  leaves your machine.
+- **Built-in updates** — the widget checks this repository every 6 hours; when
+  a newer version is published the border turns Claude-orange and an *Update
+  available* entry appears at the top of the right-click menu
+- Claude-styled right-click menu — dark, rounded, orange highlight
+- Re-asserts topmost only when the taskbar has actually covered it, instead of
+  twice a second — no more flicker
+
+<img src="docs/screenshot-usage.png" alt="The local usage chart: stacked daily new tokens over two months" width="480">
 
 ## Requirements
 
@@ -73,6 +85,7 @@ This program handles your Claude Code credentials. In full:
 | `%APPDATA%\ClaudeWidget\tokens.json` | write | local token cache |
 | `%APPDATA%\ClaudeWidget\config.json` | write | position, opacity, language |
 | `%APPDATA%\ClaudeWidget\log.txt` | write | diagnostics, capped at 128 KB — **never contains tokens** |
+| `%USERPROFILE%\.claude\projects\**\*.jsonl` | read | your local Claude Code transcripts, summed for the local usage chart — read only, nothing is sent anywhere |
 
 **Why it writes back to `.credentials.json`:** the OAuth server rotates refresh
 tokens — using one invalidates the previous one. An earlier version kept the

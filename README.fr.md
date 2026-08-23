@@ -25,6 +25,19 @@ Loupe ou le clavier visuel.
   chiffre frais
 - Opacité réglable, lancement au démarrage de Windows en option
 - **English, Français, Español, Deutsch** — clic droit → Langue
+- **Graphique de conso locale** — clic droit → *Détail conso locale* : un
+  graphique empilé, jour par jour, des tokens neufs (écritures de cache et
+  messages + réponses) sur le mois en cours et le mois précédent, calculé
+  depuis vos conversations Claude Code locales. Rien ne quitte votre machine.
+- **Mises à jour intégrées** — le widget compare sa version à ce dépôt toutes
+  les 6 heures ; quand une nouvelle version est publiée, le contour passe à
+  l'orange Claude et une entrée *Mise à jour disponible* apparaît en tête du
+  clic droit
+- Menu clic droit au style Claude — sombre, arrondi, surlignage orange
+- Ne se replace au-dessus de la barre des tâches que si elle l'a réellement
+  recouvert, au lieu de deux fois par seconde — fini le clignotement
+
+<img src="docs/screenshot-usage.png" alt="Le graphique de conso locale : tokens neufs par jour sur deux mois" width="480">
 
 ## Prérequis
 
@@ -78,6 +91,7 @@ Ce programme manipule vos identifiants Claude Code. En détail :
 | `%APPDATA%\ClaudeWidget\tokens.json` | écriture | cache local du jeton |
 | `%APPDATA%\ClaudeWidget\config.json` | écriture | position, opacité, langue |
 | `%APPDATA%\ClaudeWidget\log.txt` | écriture | diagnostic, limité à 128 Ko — **ne contient jamais de jeton** |
+| `%USERPROFILE%\.claude\projects\**\*.jsonl` | lecture | vos conversations Claude Code locales, additionnées pour le graphique de conso — lecture seule, rien n'est envoyé nulle part |
 
 **Pourquoi réécrire dans `.credentials.json` :** le serveur OAuth fait tourner
 les refresh tokens — s'en servir invalide le précédent. Une version antérieure

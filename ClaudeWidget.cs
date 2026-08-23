@@ -12,11 +12,13 @@ using System.Runtime.InteropServices;
 using System.Runtime.Serialization;
 using System.Runtime.Serialization.Json;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Documents;
 using System.Windows.Input;
+using System.Windows.Markup;
 using System.Windows.Media;
 using System.Windows.Shapes;
 using System.Windows.Threading;
@@ -85,6 +87,16 @@ namespace ClaudeWidgetApp
                       MenuStartWithWindows, MenuHideFullScreen, MenuOpenLog,
                       MenuRestart, MenuLanguage, MenuQuit;
 
+        public string MenuUpdate;       // shown in orange when the repository is ahead
+        public string MenuLocalDetail;  // context-menu entry for the local-usage window
+        public string DetailTitle;
+        public string DetailToday;
+        public string DetailWeek;       // {0} = window start, day + HH:mm
+        public string Detail7d;         // fallback title when the API reset time is unknown
+        public string DetailWrites, DetailAnswers, DetailProjects;
+        public string DetailScanning;
+        public string DetailNote;
+
         public string ErrNotSignedIn, ErrBadResponse;
     }
 
@@ -124,6 +136,17 @@ namespace ClaudeWidgetApp
                 MenuRestart = "Restart widget",
                 MenuLanguage = "Language",
                 MenuQuit = "Quit",
+                MenuUpdate = "Update available",
+                MenuLocalDetail = "Local usage details",
+                DetailTitle = "Local usage - new tokens",
+                DetailToday = "Today",
+                DetailWeek = "Quota week (since {0})",
+                Detail7d = "Last 7 days",
+                DetailWrites = "cache writes",
+                DetailAnswers = "prompts + answers",
+                DetailProjects = "Top projects this week",
+                DetailScanning = "scanning transcripts...",
+                DetailNote = "Counted from the local Claude Code transcripts: sent + produced + cache-written tokens. Context re-reads are excluded - they barely count toward the limit.",
                 ErrNotSignedIn = "Claude Code is not signed in (run it once)",
                 ErrBadResponse = "Unreadable API response"
             };
@@ -152,6 +175,17 @@ namespace ClaudeWidgetApp
                 MenuRestart = "Redémarrer le widget",
                 MenuLanguage = "Langue",
                 MenuQuit = "Quitter",
+                MenuUpdate = "Mise à jour disponible",
+                MenuLocalDetail = "Détail conso locale",
+                DetailTitle = "Conso locale - tokens neufs",
+                DetailToday = "Aujourd'hui",
+                DetailWeek = "Semaine de quota (depuis {0})",
+                Detail7d = "7 derniers jours",
+                DetailWrites = "écritures de cache",
+                DetailAnswers = "messages + réponses",
+                DetailProjects = "Projets les plus gourmands",
+                DetailScanning = "analyse des conversations...",
+                DetailNote = "Compté depuis les conversations locales de Claude Code : tokens envoyés + produits + écrits en cache. Les relectures de contexte sont exclues - elles ne pèsent presque pas sur la limite.",
                 ErrNotSignedIn = "Claude Code n'est pas connecté (lance-le une fois)",
                 ErrBadResponse = "Réponse de l'API illisible"
             };
@@ -180,6 +214,17 @@ namespace ClaudeWidgetApp
                 MenuRestart = "Reiniciar el widget",
                 MenuLanguage = "Idioma",
                 MenuQuit = "Salir",
+                MenuUpdate = "Actualización disponible",
+                MenuLocalDetail = "Detalle de uso local",
+                DetailTitle = "Uso local - tokens nuevos",
+                DetailToday = "Hoy",
+                DetailWeek = "Semana de cuota (desde {0})",
+                Detail7d = "Últimos 7 días",
+                DetailWrites = "escrituras de caché",
+                DetailAnswers = "mensajes + respuestas",
+                DetailProjects = "Proyectos que más consumen",
+                DetailScanning = "analizando conversaciones...",
+                DetailNote = "Contado desde las conversaciones locales de Claude Code: tokens enviados + producidos + escritos en caché. Las relecturas de contexto quedan fuera - apenas cuentan para el límite.",
                 ErrNotSignedIn = "Claude Code no ha iniciado sesión (ejecútalo una vez)",
                 ErrBadResponse = "Respuesta de la API ilegible"
             };
@@ -208,6 +253,17 @@ namespace ClaudeWidgetApp
                 MenuRestart = "Widget neu starten",
                 MenuLanguage = "Sprache",
                 MenuQuit = "Beenden",
+                MenuUpdate = "Update verfügbar",
+                MenuLocalDetail = "Lokale Nutzungsdetails",
+                DetailTitle = "Lokale Nutzung - neue Tokens",
+                DetailToday = "Heute",
+                DetailWeek = "Kontingentwoche (seit {0})",
+                Detail7d = "Letzte 7 Tage",
+                DetailWrites = "Cache-Schreibvorgänge",
+                DetailAnswers = "Nachrichten + Antworten",
+                DetailProjects = "Größte Projekte",
+                DetailScanning = "Analyse der Unterhaltungen...",
+                DetailNote = "Gezählt aus den lokalen Claude-Code-Unterhaltungen: gesendete + erzeugte + in den Cache geschriebene Tokens. Erneut gelesener Kontext zählt nicht - er wiegt kaum auf dem Limit.",
                 ErrNotSignedIn = "Claude Code ist nicht angemeldet (einmal starten)",
                 ErrBadResponse = "Unlesbare API-Antwort"
             };
@@ -240,6 +296,12 @@ namespace ClaudeWidgetApp
     // ---------- Claude API ----------
     public static class Api
     {
+        // Bump this when publishing: the update check compares it against the
+        // same line in the repository's ClaudeWidget.cs.
+        public const string Version = "2026.08.23";
+        const string SourceUrl = "https://raw.githubusercontent.com/Defacedz/claude-usage-widget/main/ClaudeWidget.cs";
+        public const string WebInstall = "https://raw.githubusercontent.com/Defacedz/claude-usage-widget/main/web-install.ps1";
+
         // Public OAuth client id of Claude Code - an identifier, not a secret.
         const string ClientId = "9d1c250a-e61b-44d9-88ed-5944d1962f5e";
         const string UsageUrl = "https://api.anthropic.com/api/oauth/usage";
@@ -475,6 +537,26 @@ namespace ClaudeWidgetApp
             return o.accessToken; // last resort
         }
 
+        // Call from a worker thread. Any failure means "no update": the check
+        // must never break a widget that only wants to show gauges.
+        public static bool UpdateAvailable()
+        {
+            try
+            {
+                var req = NewRequest(SourceUrl);
+                req.Method = "GET";
+                using (var resp = (HttpWebResponse)req.GetResponse())
+                using (var r = new StreamReader(resp.GetResponseStream()))
+                {
+                    Match m = Regex.Match(r.ReadToEnd(), "Version = \"([^\"]+)\"");
+                    bool avail = m.Success && m.Groups[1].Value != Version;
+                    if (avail) Log("update available: " + m.Groups[1].Value + " (local " + Version + ")");
+                    return avail;
+                }
+            }
+            catch { return false; }
+        }
+
         public static Usage GetUsage()
         {
             try { return GetUsageOnce(); }
@@ -528,6 +610,86 @@ namespace ClaudeWidgetApp
         }
     }
 
+    // ---------- local usage (read from Claude Code's own transcripts) ----------
+    // Claude Code keeps one JSONL file per conversation under
+    // ~/.claude/projects/<project>/<session>.jsonl; every assistant line
+    // carries a usage block. Only "new" tokens are summed (input + output +
+    // cache writes): the weeks that ended at 100% all land on the same
+    // new-token total, while cache reads vary wildly - so the weekly limit
+    // barely counts re-reads.
+    public class LocalDaily
+    {
+        public DateTime Start;          // local date of the first bin
+        public long[] Writes, Answers;  // tokens per local day
+    }
+
+    public static class LocalStats
+    {
+        static readonly Regex RxIn = new Regex("\"input_tokens\":(\\d+)", RegexOptions.Compiled);
+        static readonly Regex RxOut = new Regex("\"output_tokens\":(\\d+)", RegexOptions.Compiled);
+        static readonly Regex RxCw = new Regex("\"cache_creation_input_tokens\":(\\d+)", RegexOptions.Compiled);
+        static readonly Regex RxTs = new Regex("\"timestamp\":\"([^\"]+)\"", RegexOptions.Compiled);
+        static readonly Regex RxMsgId = new Regex("\"id\":\"([^\"]+)\"", RegexOptions.Compiled);
+        static readonly Regex RxReqId = new Regex("\"requestId\":\"([^\"]+)\"", RegexOptions.Compiled);
+
+        static long Num(Regex rx, string line)
+        {
+            Match m = rx.Match(line);
+            long v;
+            return m.Success && long.TryParse(m.Groups[1].Value, out v) ? v : 0;
+        }
+
+        public static LocalDaily ScanDaily(DateTime startLocalDate)
+        {
+            int n = (DateTime.Today - startLocalDate).Days + 1;
+            if (n < 1) n = 1;
+            var d = new LocalDaily { Start = startLocalDate, Writes = new long[n], Answers = new long[n] };
+            var seen = new HashSet<string>();
+            DateTime minMtimeUtc = startLocalDate.AddDays(-1).ToUniversalTime();
+            string root = System.IO.Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".claude\\projects");
+            if (!Directory.Exists(root)) return d;
+
+            foreach (string dir in Directory.GetDirectories(root))
+            {
+                foreach (string file in Directory.GetFiles(dir, "*.jsonl", SearchOption.AllDirectories))
+                {
+                    try
+                    {
+                        if (File.GetLastWriteTimeUtc(file) < minMtimeUtc) continue;
+                        using (var r = new StreamReader(file))
+                        {
+                            string line;
+                            while ((line = r.ReadLine()) != null)
+                            {
+                                if (line.IndexOf("\"assistant\"", StringComparison.Ordinal) < 0) continue;
+                                if (line.IndexOf("\"usage\"", StringComparison.Ordinal) < 0) continue;
+                                Match ts = RxTs.Match(line);
+                                if (!ts.Success) continue;
+                                DateTimeOffset when;
+                                if (!DateTimeOffset.TryParse(ts.Groups[1].Value, CultureInfo.InvariantCulture,
+                                        DateTimeStyles.None, out when)) continue;
+                                int idx = (when.ToLocalTime().Date - startLocalDate).Days;
+                                if (idx < 0 || idx >= n) continue;
+                                // one API reply can be written as several lines
+                                Match mi = RxMsgId.Match(line);
+                                Match rq = RxReqId.Match(line);
+                                string key = (mi.Success ? mi.Groups[1].Value : "") + "|" +
+                                             (rq.Success ? rq.Groups[1].Value : "");
+                                if (key.Length > 1 && !seen.Add(key)) continue;
+
+                                d.Writes[idx] += Num(RxCw, line);
+                                d.Answers[idx] += Num(RxIn, line) + Num(RxOut, line);
+                            }
+                        }
+                    }
+                    catch { }
+                }
+            }
+            return d;
+        }
+    }
+
     // ---------- window ----------
     public class MainWindow : Window
     {
@@ -548,7 +710,11 @@ namespace ClaudeWidgetApp
         [DllImport("user32.dll")] static extern bool GetMonitorInfo(IntPtr hMonitor, ref MONITORINFO mi);
         [DllImport("user32.dll", CharSet = CharSet.Unicode)]
         static extern int GetClassName(IntPtr hWnd, StringBuilder buf, int count);
+        [DllImport("user32.dll")] static extern IntPtr GetWindow(IntPtr hWnd, uint cmd);
+        [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+        static extern IntPtr FindWindow(string cls, string title);
         const uint MONITOR_DEFAULTTONEAREST = 2;
+        const uint GW_HWNDPREV = 3;
 
         StackPanel _rows;
         Border _root;
@@ -666,6 +832,13 @@ namespace ClaudeWidgetApp
                 var t3 = new DispatcherTimer { Interval = TimeSpan.FromSeconds(60) };
                 t3.Tick += delegate { if (_last != null) Render(); };
                 t3.Start();
+                CheckUpdate();
+                var t4 = new DispatcherTimer { Interval = TimeSpan.FromHours(6) };
+                t4.Tick += delegate { CheckUpdate(); };
+                t4.Start();
+                // handy for tests and screenshots: open the chart right away
+                foreach (string a in Environment.GetCommandLineArgs())
+                    if (a == "--detail") { ShowLocalDetail(); break; }
             };
         }
 
@@ -698,6 +871,24 @@ namespace ClaudeWidgetApp
                 && r.Right >= mi.rcMonitor.Right && r.Bottom >= mi.rcMonitor.Bottom;
         }
 
+        // The widget is above the taskbar exactly when it comes before it in
+        // the z-order: walking upwards from the taskbar must reach our hwnd.
+        static bool IsAboveTaskbar(IntPtr self)
+        {
+            IntPtr tray = FindWindow("Shell_TrayWnd", null);
+            if (tray == IntPtr.Zero) return false;
+            IntPtr h = tray;
+            for (int i = 0; i < 512; i++)
+            {
+                h = GetWindow(h, GW_HWNDPREV);
+                if (h == IntPtr.Zero) break;
+                if (h == self) return true;
+            }
+            return false;
+        }
+
+        bool _menuOpen;
+
         void AssertTop()
         {
             if (_hwnd == IntPtr.Zero) return;
@@ -711,6 +902,11 @@ namespace ClaudeWidgetApp
             // Re-asserting topmost over a full-screen game can kick it out of
             // its display mode or stutter it, so we stop entirely while hidden.
             if (hide) return;
+
+            // The blind NOTOPMOST/TOPMOST dance every 500 ms caused a visible
+            // flicker (and fought the context menu). Re-assert only when the
+            // taskbar has actually climbed above us.
+            if (_menuOpen || IsAboveTaskbar(_hwnd)) return;
 
             SetWindowPos(_hwnd, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_FLAGS);
             SetWindowPos(_hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_FLAGS);
@@ -910,9 +1106,12 @@ namespace ClaudeWidgetApp
             }
             else
             {
-                _root.BorderBrush = B("#22FFFFFF");
+                // Data freshness owns the border when something is wrong;
+                // otherwise an available update paints it Claude-orange.
+                _root.BorderBrush = B(_updateAvailable ? "#CCDA7756" : "#22FFFFFF");
                 _rows.Opacity = 1.0;
             }
+            if (_updateAvailable) tips.Add(L.MenuUpdate);
             _root.ToolTip = string.Join(Environment.NewLine, tips.ToArray());
         }
 
@@ -947,14 +1146,399 @@ namespace ClaudeWidgetApp
             });
         }
 
+        // ---------- update check ----------
+        bool _updateAvailable;
+
+        void CheckUpdate()
+        {
+            ThreadPool.QueueUserWorkItem(delegate
+            {
+                bool avail = Api.UpdateAvailable();
+                Dispatcher.BeginInvoke(new Action(delegate
+                {
+                    if (avail == _updateAvailable) return;
+                    _updateAvailable = avail;
+                    BuildMenu();    // the Update entry appears or disappears
+                    Redraw();       // the border turns orange (or back)
+                }));
+            });
+        }
+
+        void StartUpdate()
+        {
+            // web-install.ps1 downloads the repository and runs Installer.ps1
+            // elevated; the installer kills this instance and starts the new one.
+            try
+            {
+                System.Diagnostics.Process.Start("powershell.exe",
+                    "-NoProfile -ExecutionPolicy Bypass -Command \"irm " + Api.WebInstall + " | iex\"");
+            }
+            catch (Exception e) { Api.Log("update launch failed: " + e.Message); }
+        }
+
+        // ---------- local usage window ----------
+        Window _detail;
+
+        static TextBlock DetailText(string text, double size, string hex, bool bold)
+        {
+            return new TextBlock
+            {
+                Text = text,
+                FontSize = size,
+                Foreground = B(hex),
+                FontWeight = bold ? FontWeights.SemiBold : FontWeights.Normal,
+                TextWrapping = TextWrapping.Wrap,
+                MaxWidth = 260
+            };
+        }
+
+        static string Mt(long tokens)
+        {
+            return string.Format("{0:0.0} M", tokens / 1e6);
+        }
+
+        static StackPanel LegendChip(string hex, string label)
+        {
+            var sp = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 14, 0) };
+            sp.Children.Add(new Border
+            {
+                Width = 9, Height = 9,
+                CornerRadius = new CornerRadius(2),
+                Background = B(hex),
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(0, 0, 5, 0)
+            });
+            sp.Children.Add(new TextBlock
+            {
+                Text = label, FontSize = 10, Foreground = B("#9BA0B5"),
+                VerticalAlignment = VerticalAlignment.Center
+            });
+            return sp;
+        }
+
+        void ShowLocalDetail()
+        {
+            if (_detail != null) { try { _detail.Close(); } catch { } _detail = null; }
+
+            // Current month plus the whole previous month.
+            DateTime today = DateTime.Today;
+            DateTime start = new DateTime(today.Year, today.Month, 1).AddMonths(-1);
+
+            const double CW = 560, CH = 200, ML = 38, MR = 10, MT = 12, MB = 20;
+            double plotW = CW - ML - MR, plotH = CH - MT - MB;
+            const string ColWrites = "#DA7756", ColAnswers = "#6C9FE8";
+
+            var panel = new StackPanel { Margin = new Thickness(12, 8, 12, 10) };
+
+            var head = new Grid { Margin = new Thickness(2, 0, 2, 6) };
+            head.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            head.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            var legend = new StackPanel { Orientation = Orientation.Horizontal };
+            legend.Children.Add(LegendChip(ColWrites, L.DetailWrites));
+            legend.Children.Add(LegendChip(ColAnswers, L.DetailAnswers));
+            Grid.SetColumn(legend, 0);
+            head.Children.Add(legend);
+            double weekPct = (_last != null && _last.seven_day != null && _last.seven_day.utilization.HasValue)
+                ? _last.seven_day.utilization.Value : -1;
+            if (weekPct >= 0)
+            {
+                var wk = new TextBlock
+                {
+                    Text = L.Week + L.Colon + (int)Math.Round(weekPct) + "%",
+                    FontSize = 10,
+                    FontWeight = FontWeights.SemiBold,
+                    Foreground = B(PctHex(weekPct)),
+                    VerticalAlignment = VerticalAlignment.Center
+                };
+                Grid.SetColumn(wk, 1);
+                head.Children.Add(wk);
+            }
+            panel.Children.Add(head);
+
+            var canvas = new Canvas { Width = CW, Height = CH, ClipToBounds = true, Background = Brushes.Transparent };
+            panel.Children.Add(canvas);
+
+            var info = new TextBlock
+            {
+                Text = L.DetailScanning,
+                FontSize = 10.5,
+                Foreground = B("#B8BCCB"),
+                Margin = new Thickness(2, 6, 2, 0)
+            };
+            panel.Children.Add(info);
+
+            var win = new Window
+            {
+                Title = L.DetailTitle,
+                Background = B("#1E2029"),
+                SizeToContent = SizeToContent.WidthAndHeight,
+                ResizeMode = ResizeMode.NoResize,
+                ShowInTaskbar = false,
+                Topmost = true,
+                WindowStartupLocation = WindowStartupLocation.Manual,
+                Left = Left,
+                Top = Math.Max(0, Top - CH - 110),
+                Content = panel
+            };
+            win.KeyDown += delegate(object s, KeyEventArgs e)
+            { if (e.Key == Key.Escape) win.Close(); };
+            win.Closed += delegate { if (_detail == win) _detail = null; };
+            _detail = win;
+            win.Show();
+
+            ThreadPool.QueueUserWorkItem(delegate
+            {
+                LocalDaily t = null;
+                try { t = LocalStats.ScanDaily(start); }
+                catch (Exception e) { Api.Log("local scan failed: " + e.Message); }
+                win.Dispatcher.BeginInvoke(new Action(delegate
+                {
+                    if (t == null || t.Writes.Length < 2)
+                    {
+                        info.Text = L.ErrBadResponse;
+                        return;
+                    }
+                    int n = t.Writes.Length;
+                    long[] tot = new long[n];
+                    long maxTot = 1;
+                    for (int i = 0; i < n; i++)
+                    {
+                        tot[i] = t.Writes[i] + t.Answers[i];
+                        if (tot[i] > maxTot) maxTot = tot[i];
+                    }
+
+                    // round scale: three gridlines at clean values
+                    double[] steps = { 2, 5, 10, 15, 20, 25, 30, 40, 50, 75, 100, 150, 200 };
+                    double stepM = steps[steps.Length - 1];
+                    foreach (double s in steps)
+                        if (3 * s * 1e6 >= maxTot) { stepM = s; break; }
+                    double ymax = 3 * stepM * 1e6;
+
+                    Func<int, double> X = delegate(int i) { return ML + plotW * i / (n - 1); };
+                    Func<double, double> Y = delegate(double v) { return MT + plotH * (1 - v / ymax); };
+
+                    for (int g = 0; g <= 3; g++)
+                    {
+                        double gy = Y(g * stepM * 1e6);
+                        var gl = new Line
+                        {
+                            X1 = ML, X2 = CW - MR, Y1 = gy, Y2 = gy,
+                            Stroke = B(g == 0 ? "#3A3E52" : "#2A2D3A"),
+                            StrokeThickness = 1
+                        };
+                        canvas.Children.Add(gl);
+                        if (g > 0)
+                        {
+                            var yl = new TextBlock
+                            {
+                                Text = stepM * g + "M", FontSize = 9, Foreground = B("#6C7086")
+                            };
+                            Canvas.SetLeft(yl, 4); Canvas.SetTop(yl, gy - 7);
+                            canvas.Children.Add(yl);
+                        }
+                    }
+
+                    // month boundaries, dashed
+                    double lastLabelX = -100;
+                    for (int i = 0; i < n; i++)
+                    {
+                        DateTime dte = t.Start.AddDays(i);
+                        if (dte.Day == 1 && i > 0)
+                        {
+                            var mline = new Line
+                            {
+                                X1 = X(i), X2 = X(i), Y1 = MT, Y2 = CH - MB,
+                                Stroke = B("#4A4E63"), StrokeThickness = 1,
+                                StrokeDashArray = new DoubleCollection { 3, 4 }
+                            };
+                            canvas.Children.Add(mline);
+                        }
+                        if (dte.Day == 1 || dte.Day == 15 || i == n - 1)
+                        {
+                            double lx = X(i);
+                            if (lx - lastLabelX >= 34)
+                            {
+                                var xl = new TextBlock
+                                {
+                                    Text = dte.ToString("d MMM"), FontSize = 9, Foreground = B("#6C7086")
+                                };
+                                Canvas.SetLeft(xl, Math.Min(lx - 12, CW - 42));
+                                Canvas.SetTop(xl, CH - MB + 4);
+                                canvas.Children.Add(xl);
+                                lastLabelX = lx;
+                            }
+                        }
+                    }
+
+                    // stacked areas: writes at the bottom, answers on top
+                    var pw = new Polygon { Fill = B(ColWrites) };
+                    var pa = new Polygon { Fill = B(ColAnswers) };
+                    for (int i = 0; i < n; i++) pw.Points.Add(new Point(X(i), Y(t.Writes[i])));
+                    for (int i = n - 1; i >= 0; i--) pw.Points.Add(new Point(X(i), Y(0)));
+                    for (int i = 0; i < n; i++) pa.Points.Add(new Point(X(i), Y(tot[i])));
+                    for (int i = n - 1; i >= 0; i--) pa.Points.Add(new Point(X(i), Y(t.Writes[i])));
+                    canvas.Children.Add(pa);
+                    canvas.Children.Add(pw);
+                    var seam = new Polyline { Stroke = B("#1E2029"), StrokeThickness = 1.2 };
+                    for (int i = 0; i < n; i++) seam.Points.Add(new Point(X(i), Y(t.Writes[i])));
+                    canvas.Children.Add(seam);
+
+                    // peak label
+                    int peak = 0;
+                    for (int i = 1; i < n; i++) if (tot[i] > tot[peak]) peak = i;
+                    if (tot[peak] > 0)
+                    {
+                        var pl = new TextBlock
+                        {
+                            Text = Mt(tot[peak]), FontSize = 9.5,
+                            FontWeight = FontWeights.SemiBold, Foreground = B("#E8EAF2")
+                        };
+                        Canvas.SetLeft(pl, Math.Max(ML, Math.Min(X(peak) - 16, CW - 52)));
+                        Canvas.SetTop(pl, Math.Max(0, Y(tot[peak]) - 14));
+                        canvas.Children.Add(pl);
+                    }
+
+                    // default caption: this month and the previous month
+                    long curMonth = 0, prevMonth = 0;
+                    for (int i = 0; i < n; i++)
+                    {
+                        if (t.Start.AddDays(i).Month == today.Month) curMonth += tot[i];
+                        else prevMonth += tot[i];
+                    }
+                    string byMonth = today.ToString("MMMM") + L.Colon + Mt(curMonth) + "   ·   " +
+                                     start.ToString("MMMM") + L.Colon + Mt(prevMonth);
+                    info.Text = byMonth;
+
+                    canvas.MouseMove += delegate(object s, MouseEventArgs e)
+                    {
+                        double mx = e.GetPosition(canvas).X;
+                        int i = (int)Math.Round((mx - ML) / (plotW / (n - 1)));
+                        if (i < 0 || i >= n) { info.Text = byMonth; return; }
+                        info.Text = t.Start.AddDays(i).ToString("ddd d MMM") + L.Colon + Mt(tot[i]) +
+                                    "  (" + L.DetailWrites + " " + Mt(t.Writes[i]) + " · " +
+                                    L.DetailAnswers + " " + Mt(t.Answers[i]) + ")";
+                    };
+                    canvas.MouseLeave += delegate { info.Text = byMonth; };
+                }));
+            });
+        }
+
         // ---------- menu ----------
+        // Claude-styled skin for the context menu: dark rounded panel, orange
+        // highlight, same palette as the widget. Replaces the gray system look.
+        const string MenuSkinXaml = @"
+<ResourceDictionary xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation'
+                    xmlns:x='http://schemas.microsoft.com/winfx/2006/xaml'>
+  <Style TargetType='ContextMenu'>
+    <Setter Property='OverridesDefaultStyle' Value='True'/>
+    <Setter Property='Template'>
+      <Setter.Value>
+        <ControlTemplate TargetType='ContextMenu'>
+          <Border Background='#F21E2029' BorderBrush='#33FFFFFF' BorderThickness='1'
+                  CornerRadius='7' Padding='4' MinWidth='170'>
+            <ItemsPresenter/>
+          </Border>
+        </ControlTemplate>
+      </Setter.Value>
+    </Setter>
+  </Style>
+  <Style TargetType='Separator'>
+    <Setter Property='OverridesDefaultStyle' Value='True'/>
+    <Setter Property='Template'>
+      <Setter.Value>
+        <ControlTemplate TargetType='Separator'>
+          <Border Height='1' Background='#26FFFFFF' Margin='6,3'/>
+        </ControlTemplate>
+      </Setter.Value>
+    </Setter>
+  </Style>
+  <Style TargetType='MenuItem'>
+    <Setter Property='OverridesDefaultStyle' Value='True'/>
+    <Setter Property='Foreground' Value='#E8EAF2'/>
+    <Setter Property='FontSize' Value='11.5'/>
+    <Setter Property='Template'>
+      <Setter.Value>
+        <ControlTemplate TargetType='MenuItem'>
+          <Border x:Name='Bd' Background='Transparent' CornerRadius='4' Padding='8,5'>
+            <Grid>
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width='15'/>
+                <ColumnDefinition Width='*'/>
+                <ColumnDefinition Width='12'/>
+              </Grid.ColumnDefinitions>
+              <TextBlock x:Name='Check' Text='&#x2713;' FontSize='10' Foreground='#DA7756'
+                         Visibility='Hidden' VerticalAlignment='Center'/>
+              <ContentPresenter Grid.Column='1' ContentSource='Header' VerticalAlignment='Center'/>
+              <TextBlock x:Name='Arrow' Grid.Column='2' Text='&#x203A;' FontSize='12'
+                         Foreground='#9BA0B5' Visibility='Hidden'
+                         VerticalAlignment='Center' HorizontalAlignment='Right'/>
+              <Popup x:Name='PART_Popup' Placement='Right' HorizontalOffset='2' VerticalOffset='-6'
+                     IsOpen='{Binding IsSubmenuOpen, RelativeSource={RelativeSource TemplatedParent}}'
+                     AllowsTransparency='True' Focusable='False'>
+                <Border Background='#F21E2029' BorderBrush='#33FFFFFF' BorderThickness='1'
+                        CornerRadius='7' Padding='4' MinWidth='110'>
+                  <ItemsPresenter/>
+                </Border>
+              </Popup>
+            </Grid>
+          </Border>
+          <ControlTemplate.Triggers>
+            <Trigger Property='IsHighlighted' Value='True'>
+              <Setter TargetName='Bd' Property='Background' Value='#2EDA7756'/>
+            </Trigger>
+            <Trigger Property='IsChecked' Value='True'>
+              <Setter TargetName='Check' Property='Visibility' Value='Visible'/>
+            </Trigger>
+            <Trigger Property='HasItems' Value='True'>
+              <Setter TargetName='Arrow' Property='Visibility' Value='Visible'/>
+            </Trigger>
+            <Trigger Property='IsEnabled' Value='False'>
+              <Setter Property='Foreground' Value='#6C7086'/>
+            </Trigger>
+          </ControlTemplate.Triggers>
+        </ControlTemplate>
+      </Setter.Value>
+    </Setter>
+  </Style>
+</ResourceDictionary>";
+
+        static ResourceDictionary _menuSkin;
+        static ResourceDictionary MenuSkin()
+        {
+            if (_menuSkin == null)
+                _menuSkin = (ResourceDictionary)XamlReader.Parse(MenuSkinXaml);
+            return _menuSkin;
+        }
+
         void BuildMenu()
         {
             var menu = new ContextMenu();
+            try { menu.Resources.MergedDictionaries.Add(MenuSkin()); }
+            catch (Exception e) { Api.Log("menu skin failed: " + e.Message); }
+            // AssertTop must not fight the open menu's popup for the z-order.
+            menu.Opened += delegate { _menuOpen = true; };
+            menu.Closed += delegate { _menuOpen = false; };
+
+            if (_updateAvailable)
+            {
+                var miU = new MenuItem
+                {
+                    Header = L.MenuUpdate,
+                    FontWeight = FontWeights.SemiBold,
+                    Foreground = B("#DA7756")
+                };
+                miU.Click += delegate { StartUpdate(); };
+                menu.Items.Add(miU);
+                menu.Items.Add(new Separator());
+            }
 
             var miR = new MenuItem { Header = L.MenuRefresh };
             miR.Click += delegate { Refresh(); };
             menu.Items.Add(miR);
+
+            var miDetail = new MenuItem { Header = L.MenuLocalDetail };
+            miDetail.Click += delegate { ShowLocalDetail(); };
+            menu.Items.Add(miDetail);
 
             var miRepl = new MenuItem { Header = L.MenuMoveBottomLeft };
             miRepl.Click += delegate
