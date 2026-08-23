@@ -1,4 +1,4 @@
-// ClaudeWidget for macOS - Claude usage gauges in the menu bar.
+// ClaudeWidget for macOS - the floating Claude usage gauge panel.
 // Single-file AppKit app, compiled from source by install.sh with swiftc.
 // No dependencies, no telemetry. Tokens go to api.anthropic.com,
 // platform.claude.com and console.anthropic.com, nowhere else.
@@ -13,17 +13,27 @@
 import AppKit
 import Foundation
 
+// Bump this when publishing: the update check compares it against the same
+// line in the repository's mac/ClaudeWidget.swift.
+let appVersion = "2026.08.25"
+let sourceUrl = "https://raw.githubusercontent.com/Defacedz/claude-usage-widget/main/mac/ClaudeWidget.swift"
+let webInstallCommand = "curl -fsSL https://raw.githubusercontent.com/Defacedz/claude-usage-widget/main/mac/web-install.sh | sh"
+
 // ---------- localization ----------
 
 struct Strings {
     let session5h: String
     let week: String
+    let short5h: String        // gauge-row labels, keep them very short
+    let short7d: String
     let resetsIn: String       // %@ = duration
     let updated: String        // %@ = HH:mm
     let offline: String        // %@ = error
     let menuRefresh: String
     let menuStartAtLogin: String
+    let menuLanguage: String
     let menuQuit: String
+    let menuUpdate: String
     let errNotSignedIn: String
     let errBadResponse: String
     let dayUnit: String
@@ -33,43 +43,57 @@ struct Strings {
 
 let catalog: [String: Strings] = [
     "en": Strings(session5h: "5-hour session", week: "Week",
+                  short5h: "5h", short7d: "7d",
                   resetsIn: "resets in %@", updated: "updated %@",
                   offline: "Offline: %@",
                   menuRefresh: "Refresh", menuStartAtLogin: "Start at login",
-                  menuQuit: "Quit",
+                  menuLanguage: "Language",
+                  menuQuit: "Quit", menuUpdate: "Update available",
                   errNotSignedIn: "Claude Code is not signed in (run it once)",
                   errBadResponse: "Unreadable API response",
                   dayUnit: "d", hourUnit: "h", minuteUnit: "min"),
     "fr": Strings(session5h: "Session 5 h", week: "Semaine",
+                  short5h: "5h", short7d: "7j",
                   resetsIn: "reset dans %@", updated: "maj %@",
                   offline: "Hors ligne : %@",
                   menuRefresh: "Actualiser", menuStartAtLogin: "Lancer à l'ouverture de session",
-                  menuQuit: "Quitter",
+                  menuLanguage: "Langue",
+                  menuQuit: "Quitter", menuUpdate: "Mise à jour disponible",
                   errNotSignedIn: "Claude Code n'est pas connecté (lance-le une fois)",
                   errBadResponse: "Réponse de l'API illisible",
                   dayUnit: "j", hourUnit: "h", minuteUnit: "min"),
     "es": Strings(session5h: "Sesión de 5 h", week: "Semana",
+                  short5h: "5h", short7d: "7d",
                   resetsIn: "se reinicia en %@", updated: "act. %@",
                   offline: "Sin conexión: %@",
                   menuRefresh: "Actualizar", menuStartAtLogin: "Iniciar al abrir sesión",
-                  menuQuit: "Salir",
+                  menuLanguage: "Idioma",
+                  menuQuit: "Salir", menuUpdate: "Actualización disponible",
                   errNotSignedIn: "Claude Code no ha iniciado sesión (ejecútalo una vez)",
                   errBadResponse: "Respuesta de la API ilegible",
                   dayUnit: "d", hourUnit: "h", minuteUnit: "min"),
     "de": Strings(session5h: "5-Stunden-Sitzung", week: "Woche",
+                  short5h: "5h", short7d: "7T",
                   resetsIn: "zurückgesetzt in %@", updated: "akt. %@",
                   offline: "Offline: %@",
                   menuRefresh: "Aktualisieren", menuStartAtLogin: "Bei Anmeldung starten",
-                  menuQuit: "Beenden",
+                  menuLanguage: "Sprache",
+                  menuQuit: "Beenden", menuUpdate: "Update verfügbar",
                   errNotSignedIn: "Claude Code ist nicht angemeldet (einmal starten)",
                   errBadResponse: "Unlesbare API-Antwort",
                   dayUnit: "T", hourUnit: "h", minuteUnit: "Min")
 ]
 
-let L: Strings = {
-    let code = String(Locale.preferredLanguages.first?.prefix(2) ?? "en")
-    return catalog[code] ?? catalog["en"]!
+let languageOrder = ["en", "fr", "es", "de"]
+let languageNames = ["en": "English", "fr": "Français", "es": "Español", "de": "Deutsch"]
+
+// Saved choice first, then the system language; the menu changes it live.
+var currentLangCode: String = {
+    let code = UserDefaults.standard.string(forKey: "lang")
+        ?? String(Locale.preferredLanguages.first?.prefix(2) ?? "en")
+    return catalog[code] != nil ? code : "en"
 }()
+var L: Strings = catalog[currentLangCode] ?? catalog["en"]!
 
 // ---------- credentials (login keychain, via /usr/bin/security) ----------
 
@@ -293,10 +317,11 @@ final class GaugeView: NSView {
     override var isFlipped: Bool { return true }
     override var mouseDownCanMoveWindow: Bool { return true }
 
-    override func rightMouseDown(with event: NSEvent) {
-        if let menu = app?.buildMenu() {
-            NSMenu.popUpContextMenu(menu, with: event, for: self)
-        }
+    // The standard AppKit hook: returning the menu here makes right-click
+    // work even on a borderless, never-key window - popping it up manually
+    // from rightMouseDown does not.
+    override func menu(for event: NSEvent) -> NSMenu? {
+        return app?.buildMenu()
     }
 
     func text(_ s: String, _ size: CGFloat, _ color: NSColor, bold: Bool = false) -> NSAttributedString {
@@ -363,10 +388,12 @@ final class GaugeView: NSView {
         let bg = NSBezierPath(roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5), xRadius: 7, yRadius: 7)
         NSColor(calibratedRed: 0.12, green: 0.13, blue: 0.16, alpha: 0.95).setFill()
         bg.fill()
+        let update = app?.updateAvailable ?? false
         let borderColor = veryStale
             ? NSColor(calibratedRed: 0.88, green: 0.32, blue: 0.32, alpha: 0.8)
             : (stale ? NSColor(calibratedRed: 0.91, green: 0.64, blue: 0.24, alpha: 0.6)
-                     : NSColor(calibratedWhite: 1, alpha: 0.13))
+                     : (update ? NSColor(calibratedRed: 0.85, green: 0.47, blue: 0.34, alpha: 0.8)
+                               : NSColor(calibratedWhite: 1, alpha: 0.13)))
         borderColor.setStroke()
         bg.lineWidth = 1
         bg.stroke()
@@ -374,8 +401,8 @@ final class GaugeView: NSView {
         drawLogo(cx: 14, cy: bounds.height / 2, size: 14)
 
         if let u = app?.usage {
-            drawRow(label: "5h", limit: u.fiveHour, centerY: 13, dim: veryStale)
-            drawRow(label: "7d", limit: u.sevenDay, centerY: 31, dim: veryStale)
+            drawRow(label: L.short5h, limit: u.fiveHour, centerY: 13, dim: veryStale)
+            drawRow(label: L.short7d, limit: u.sevenDay, centerY: 31, dim: veryStale)
         } else {
             let msg = app?.lastError ?? "…"
             drawText(text(msg, 9, NSColor(calibratedRed: 0.61, green: 0.63, blue: 0.71, alpha: 1)),
@@ -399,6 +426,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     var usage: Usage?
     var lastUpdate: Date?
     var lastError: String?
+    var updateAvailable = false
 
     let agentPlist = NSString(string: "~/Library/LaunchAgents/com.defacedz.claudewidget.plist").expandingTildeInPath
 
@@ -428,6 +456,38 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // redraw every minute so the countdowns stay alive
         Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
             self?.gauge.needsDisplay = true
+        }
+        checkUpdate()
+        Timer.scheduledTimer(withTimeInterval: 6 * 3600, repeats: true) { [weak self] _ in
+            self?.checkUpdate()
+        }
+    }
+
+    // Compares the appVersion line of the repository's source with ours.
+    // Any failure means "no update" - the check must never break the gauges.
+    func checkUpdate() {
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            guard let url = URL(string: sourceUrl) else { return }
+            var available = false
+            let sem = DispatchSemaphore(value: 0)
+            URLSession.shared.dataTask(with: url) { data, _, _ in
+                if let d = data, let s = String(data: d, encoding: .utf8),
+                   let r = s.range(of: "appVersion = \"") {
+                    let rest = s[r.upperBound...]
+                    if let end = rest.firstIndex(of: "\"") {
+                        available = String(rest[..<end]) != appVersion
+                    }
+                }
+                sem.signal()
+            }.resume()
+            _ = sem.wait(timeout: .now() + 25)
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                if self.updateAvailable != available {
+                    self.updateAvailable = available
+                    self.gauge.needsDisplay = true
+                }
+            }
         }
     }
 
@@ -472,6 +532,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     func buildMenu() -> NSMenu {
         let menu = NSMenu()
+        if updateAvailable {
+            let updateItem = NSMenuItem(title: L.menuUpdate, action: #selector(onUpdate), keyEquivalent: "")
+            updateItem.target = self
+            updateItem.attributedTitle = NSAttributedString(
+                string: L.menuUpdate,
+                attributes: [.font: NSFont.boldSystemFont(ofSize: 13),
+                             .foregroundColor: NSColor(calibratedRed: 0.85, green: 0.47, blue: 0.34, alpha: 1)])
+            menu.addItem(updateItem)
+            menu.addItem(NSMenuItem.separator())
+        }
         let refreshItem = NSMenuItem(title: L.menuRefresh, action: #selector(onRefresh), keyEquivalent: "")
         refreshItem.target = self
         menu.addItem(refreshItem)
@@ -481,12 +551,43 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         loginItem.state = FileManager.default.fileExists(atPath: agentPlist) ? .on : .off
         menu.addItem(loginItem)
 
+        let langItem = NSMenuItem(title: L.menuLanguage, action: nil, keyEquivalent: "")
+        let langMenu = NSMenu()
+        for code in languageOrder {
+            let item = NSMenuItem(title: languageNames[code] ?? code,
+                                  action: #selector(onSelectLanguage(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = code
+            item.state = code == currentLangCode ? .on : .off
+            langMenu.addItem(item)
+        }
+        langItem.submenu = langMenu
+        menu.addItem(langItem)
+
         menu.addItem(NSMenuItem.separator())
         menu.addItem(NSMenuItem(title: L.menuQuit, action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
         return menu
     }
 
+    @objc func onSelectLanguage(_ sender: NSMenuItem) {
+        guard let code = sender.representedObject as? String, let strings = catalog[code] else { return }
+        currentLangCode = code
+        L = strings
+        UserDefaults.standard.set(code, forKey: "lang")
+        updateTooltip()
+        gauge.needsDisplay = true
+    }
+
     @objc func onRefresh() { refresh() }
+
+    // web-install.sh downloads the repository, rebuilds from source, kills
+    // this instance and starts the new one. The shell survives us dying.
+    @objc func onUpdate() {
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: "/bin/sh")
+        p.arguments = ["-c", webInstallCommand]
+        try? p.run()
+    }
 
     @objc func onToggleLogin() {
         let fm = FileManager.default
