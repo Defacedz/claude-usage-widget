@@ -277,6 +277,112 @@ func fmtReset(_ iso: String?) -> String {
 }
 
 // ---------- app ----------
+// The same floating panel as the Windows version: logo, two gauge rows
+// (5-hour session and week) with coloured bars and reset countdowns, always
+// on top, draggable, position remembered. Right-click for the menu.
+
+func gaugeColor(_ p: Double) -> NSColor {
+    if p >= 90 { return NSColor(calibratedRed: 0.88, green: 0.32, blue: 0.32, alpha: 1) }
+    if p >= 70 { return NSColor(calibratedRed: 0.91, green: 0.64, blue: 0.24, alpha: 1) }
+    return NSColor(calibratedRed: 0.85, green: 0.47, blue: 0.34, alpha: 1)  // Claude orange
+}
+
+final class GaugeView: NSView {
+    weak var app: AppDelegate?
+
+    override var isFlipped: Bool { return true }
+    override var mouseDownCanMoveWindow: Bool { return true }
+
+    override func rightMouseDown(with event: NSEvent) {
+        if let menu = app?.buildMenu() {
+            NSMenu.popUpContextMenu(menu, with: event, for: self)
+        }
+    }
+
+    func text(_ s: String, _ size: CGFloat, _ color: NSColor, bold: Bool = false) -> NSAttributedString {
+        let font = bold ? NSFont.monospacedDigitSystemFont(ofSize: size, weight: .semibold)
+                        : NSFont.monospacedDigitSystemFont(ofSize: size, weight: .regular)
+        return NSAttributedString(string: s, attributes: [.font: font, .foregroundColor: color])
+    }
+
+    func drawText(_ s: NSAttributedString, x: CGFloat, centerY: CGFloat, rightAlignedTo: CGFloat? = nil) {
+        let size = s.size()
+        let px = rightAlignedTo != nil ? rightAlignedTo! - size.width : x
+        s.draw(at: NSPoint(x: px, y: centerY - size.height / 2))
+    }
+
+    func drawBar(x: CGFloat, centerY: CGFloat, width: CGFloat, pct: Double, color: NSColor) {
+        let track = NSBezierPath(roundedRect: NSRect(x: x, y: centerY - 2, width: width, height: 4),
+                                 xRadius: 2, yRadius: 2)
+        NSColor(calibratedRed: 0.16, green: 0.18, blue: 0.23, alpha: 1).setFill()
+        track.fill()
+        let w = max(4, width * CGFloat(min(100, max(0, pct))) / 100)
+        let fill = NSBezierPath(roundedRect: NSRect(x: x, y: centerY - 2, width: w, height: 4),
+                                xRadius: 2, yRadius: 2)
+        color.setFill()
+        fill.fill()
+    }
+
+    func drawRow(label: String, limit: Limit?, centerY: CGFloat, dim: Bool) {
+        guard let limit = limit, let value = limit.utilization else { return }
+        let pct = min(100, max(0, value))
+        let gray = NSColor(calibratedWhite: 0.55, alpha: 1)
+        let color = dim ? gray : gaugeColor(pct)
+        drawText(text(label, 8.5, NSColor(calibratedRed: 0.42, green: 0.44, blue: 0.52, alpha: 1), bold: true),
+                 x: 26, centerY: centerY)
+        drawText(text("\(Int(pct.rounded()))%", 10, color, bold: true), x: 48, centerY: centerY)
+        drawBar(x: 84, centerY: centerY, width: 58, pct: pct, color: color)
+        let reset = fmtReset(limit.resetsAt)
+        if !reset.isEmpty {
+            drawText(text(reset, 9, NSColor(calibratedRed: 0.72, green: 0.74, blue: 0.80, alpha: 1)),
+                     x: 0, centerY: centerY, rightAlignedTo: bounds.width - 8)
+        }
+    }
+
+    func drawLogo(cx: CGFloat, cy: CGFloat, size: CGFloat) {
+        let lengths: [CGFloat] = [0.50, 0.41, 0.47, 0.42, 0.50, 0.43, 0.46, 0.40, 0.49, 0.42, 0.47, 0.41]
+        let half = 7.5 * CGFloat.pi / 180
+        NSColor(calibratedRed: 0.85, green: 0.47, blue: 0.34, alpha: 1).setFill()
+        for i in 0..<12 {
+            let a = CGFloat(i) * 30 * CGFloat.pi / 180
+            let r = size * lengths[i]
+            let path = NSBezierPath()
+            path.move(to: NSPoint(x: cx, y: cy))
+            path.line(to: NSPoint(x: cx + r * cos(a - half), y: cy + r * sin(a - half)))
+            path.line(to: NSPoint(x: cx + r * cos(a + half), y: cy + r * sin(a + half)))
+            path.close()
+            path.fill()
+        }
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        let app = self.app
+        let stale = app?.lastError != nil
+        let veryStale = stale && (app?.lastUpdate.map { Date().timeIntervalSince($0) > 720 } ?? true)
+
+        let bg = NSBezierPath(roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5), xRadius: 7, yRadius: 7)
+        NSColor(calibratedRed: 0.12, green: 0.13, blue: 0.16, alpha: 0.95).setFill()
+        bg.fill()
+        let borderColor = veryStale
+            ? NSColor(calibratedRed: 0.88, green: 0.32, blue: 0.32, alpha: 0.8)
+            : (stale ? NSColor(calibratedRed: 0.91, green: 0.64, blue: 0.24, alpha: 0.6)
+                     : NSColor(calibratedWhite: 1, alpha: 0.13))
+        borderColor.setStroke()
+        bg.lineWidth = 1
+        bg.stroke()
+
+        drawLogo(cx: 14, cy: bounds.height / 2, size: 14)
+
+        if let u = app?.usage {
+            drawRow(label: "5h", limit: u.fiveHour, centerY: 13, dim: veryStale)
+            drawRow(label: "7d", limit: u.sevenDay, centerY: 31, dim: veryStale)
+        } else {
+            let msg = app?.lastError ?? "…"
+            drawText(text(msg, 9, NSColor(calibratedRed: 0.61, green: 0.63, blue: 0.71, alpha: 1)),
+                     x: 26, centerY: bounds.height / 2)
+        }
+    }
+}
 
 @main
 class AppDelegate: NSObject, NSApplicationDelegate {
@@ -284,25 +390,44 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let app = NSApplication.shared
         let delegate = AppDelegate()
         app.delegate = delegate
-        app.setActivationPolicy(.accessory)   // menu bar only, no Dock icon
+        app.setActivationPolicy(.accessory)   // floating panel only, no Dock icon
         app.run()
     }
 
-    var statusItem: NSStatusItem!
+    var window: NSWindow!
+    var gauge: GaugeView!
     var usage: Usage?
     var lastUpdate: Date?
     var lastError: String?
-    var timer: Timer?
 
     let agentPlist = NSString(string: "~/Library/LaunchAgents/com.defacedz.claudewidget.plist").expandingTildeInPath
 
     func applicationDidFinishLaunching(_ note: Notification) {
-        statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        statusItem.button?.title = "…"
-        statusItem.menu = buildMenu()
+        let size = NSSize(width: 204, height: 44)
+        var origin = NSPoint(x: 8, y: 8)
+        if let screen = NSScreen.main {
+            origin = NSPoint(x: screen.visibleFrame.minX + 8, y: screen.visibleFrame.minY + 8)
+        }
+        window = NSWindow(contentRect: NSRect(origin: origin, size: size),
+                          styleMask: [.borderless], backing: .buffered, defer: false)
+        window.isOpaque = false
+        window.backgroundColor = .clear
+        window.hasShadow = true
+        window.level = .statusBar
+        window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+        window.isMovableByWindowBackground = true
+        window.setFrameAutosaveName("ClaudeWidget")   // remembers the position
+
+        gauge = GaugeView(frame: NSRect(origin: .zero, size: size))
+        gauge.app = self
+        window.contentView = gauge
+        window.orderFrontRegardless()
+
         refresh()
-        timer = Timer.scheduledTimer(withTimeInterval: 300, repeats: true) { [weak self] _ in
-            self?.refresh()
+        Timer.scheduledTimer(withTimeInterval: 300, repeats: true) { [weak self] _ in self?.refresh() }
+        // redraw every minute so the countdowns stay alive
+        Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
+            self?.gauge.needsDisplay = true
         }
     }
 
@@ -317,60 +442,37 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 guard let self = self else { return }
                 if let u = u { self.usage = u; self.lastUpdate = Date(); self.lastError = nil }
                 else { self.lastError = err }
-                self.render()
+                self.updateTooltip()
+                self.gauge.needsDisplay = true
             }
         }
     }
 
-    func render() {
-        guard let button = statusItem.button else { return }
-        let title = NSMutableAttributedString()
-        let font = NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .medium)
-        func chunk(_ text: String, _ color: NSColor) {
-            title.append(NSAttributedString(string: text,
-                attributes: [.font: font, .foregroundColor: color]))
-        }
-        let stale = lastError != nil
-        let gray = NSColor.secondaryLabelColor
-        if let u = usage, let five = u.fiveHour?.utilization, let seven = u.sevenDay?.utilization {
-            chunk("✱ ", stale ? gray : pctColor(max(five, seven)))
-            chunk("\(Int(five.rounded()))%", stale ? gray : pctColor(five))
-            chunk(" · ", gray)
-            chunk("\(Int(seven.rounded()))%", stale ? gray : pctColor(seven))
-        } else {
-            chunk("✱ —", gray)
-        }
-        button.attributedTitle = title
-        statusItem.menu = buildMenu()
-    }
-
-    func buildMenu() -> NSMenu {
-        let menu = NSMenu()
-        func line(_ text: String, enabled: Bool = false) {
-            let item = NSMenuItem(title: text, action: nil, keyEquivalent: "")
-            item.isEnabled = enabled
-            menu.addItem(item)
-        }
+    func updateTooltip() {
+        var lines: [String] = []
         if let u = usage {
             if let five = u.fiveHour?.utilization {
                 let reset = fmtReset(u.fiveHour?.resetsAt)
-                line("\(L.session5h): \(Int(five.rounded()))%" +
-                     (reset.isEmpty ? "" : "  (" + String(format: L.resetsIn, reset) + ")"))
+                lines.append("\(L.session5h): \(Int(five.rounded()))%" +
+                             (reset.isEmpty ? "" : " (" + String(format: L.resetsIn, reset) + ")"))
             }
             if let seven = u.sevenDay?.utilization {
                 let reset = fmtReset(u.sevenDay?.resetsAt)
-                line("\(L.week): \(Int(seven.rounded()))%" +
-                     (reset.isEmpty ? "" : "  (" + String(format: L.resetsIn, reset) + ")"))
+                lines.append("\(L.week): \(Int(seven.rounded()))%" +
+                             (reset.isEmpty ? "" : " (" + String(format: L.resetsIn, reset) + ")"))
             }
         }
         if let ts = lastUpdate {
             let f = DateFormatter(); f.dateFormat = "HH:mm"
-            line(String(format: L.updated, f.string(from: ts)))
+            lines.append(String(format: L.updated, f.string(from: ts)))
         }
-        if let err = lastError { line(String(format: L.offline, err)) }
-        menu.addItem(NSMenuItem.separator())
+        if let err = lastError { lines.append(String(format: L.offline, err)) }
+        gauge.toolTip = lines.joined(separator: "\n")
+    }
 
-        let refreshItem = NSMenuItem(title: L.menuRefresh, action: #selector(onRefresh), keyEquivalent: "r")
+    func buildMenu() -> NSMenu {
+        let menu = NSMenu()
+        let refreshItem = NSMenuItem(title: L.menuRefresh, action: #selector(onRefresh), keyEquivalent: "")
         refreshItem.target = self
         menu.addItem(refreshItem)
 
@@ -380,8 +482,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(loginItem)
 
         menu.addItem(NSMenuItem.separator())
-        let quit = NSMenuItem(title: L.menuQuit, action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
-        menu.addItem(quit)
+        menu.addItem(NSMenuItem(title: L.menuQuit, action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
         return menu
     }
 
@@ -406,6 +507,5 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             try? fm.createDirectory(atPath: dir, withIntermediateDirectories: true)
             try? plist.write(toFile: agentPlist, atomically: true, encoding: .utf8)
         }
-        statusItem.menu = buildMenu()
     }
 }

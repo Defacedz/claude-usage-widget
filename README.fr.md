@@ -83,8 +83,8 @@ quitter.
 
 ## Installation (macOS)
 
-La version macOS affiche les mêmes jauges dans la barre de menus
-(`✱ 31% · 60%`). Elle demande les outils en ligne de commande Xcode
+La version macOS affiche le même panneau de jauges flottant que sous Windows.
+Elle demande les outils en ligne de commande Xcode
 (gratuits, `xcode-select --install`) et Claude Code connecté une fois.
 Collez ceci dans le **Terminal** :
 

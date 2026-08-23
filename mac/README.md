@@ -1,13 +1,13 @@
 # Claude Usage Widget — macOS
 
-The Claude usage gauges as a **menu-bar item**: `✱ 31% · 60%` (5-hour session ·
-weekly limit), coloured orange to red as you approach the limits. Click it for
-the details and the reset countdowns.
+The same floating widget as on Windows: an always-on-top panel with the two
+coloured gauge bars (5-hour session and weekly limit), the reset countdowns
+and the Claude logo. Drag it anywhere, right-click it for the menu.
 
 *Version française plus bas.*
 
-First macOS version: gauges, countdowns, refresh, start at login. The local
-usage chart of the Windows version is planned next.
+First macOS version: the gauge panel, countdowns, refresh, start at login.
+The local usage chart of the Windows version is planned next.
 
 ## Requirements
 
@@ -36,7 +36,7 @@ with Anthropic.
 
 ## Uninstall
 
-1. Menu bar → the ✱ item → *Quit*
+1. Right-click the widget → *Quit*
 2. Delete `~/Applications/ClaudeWidget.app`
 3. Delete `~/Library/LaunchAgents/com.defacedz.claudewidget.plist` if you had
    enabled *Start at login*
@@ -45,13 +45,14 @@ with Anthropic.
 
 # Version française
 
-Les jauges d'utilisation Claude dans la **barre de menus** : `✱ 31% · 60%`
-(session 5 h · limite hebdomadaire), colorées de l'orange au rouge à
-l'approche des limites. Un clic affiche le détail et les comptes à rebours.
+Le même widget flottant que sous Windows : un panneau toujours visible avec
+les deux barres de jauge colorées (session 5 h et limite hebdomadaire), les
+comptes à rebours et le logo Claude. Déplaçable à la souris, clic droit pour
+le menu.
 
-Première version macOS : jauges, comptes à rebours, actualisation, lancement à
-l'ouverture de session. Le graphique de conso locale de la version Windows
-viendra ensuite.
+Première version macOS : le panneau de jauges, les comptes à rebours,
+l'actualisation, le lancement à l'ouverture de session. Le graphique de conso
+locale de la version Windows viendra ensuite.
 
 ## Prérequis
 
@@ -78,7 +79,7 @@ Vos jetons ne sont transmis qu'à `api.anthropic.com`, `platform.claude.com` et
 
 ## Désinstallation
 
-1. Barre de menus → l'élément ✱ → *Quitter*
+1. Clic droit sur le widget → *Quitter*
 2. Supprimer `~/Applications/ClaudeWidget.app`
 3. Supprimer `~/Library/LaunchAgents/com.defacedz.claudewidget.plist` si le
    lancement à l'ouverture de session était activé

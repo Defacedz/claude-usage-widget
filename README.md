@@ -77,7 +77,7 @@ corner. Right-click it for language, opacity, autostart and quit.
 
 ## Install (macOS)
 
-The macOS version shows the same gauges as a menu-bar item (`✱ 31% · 60%`).
+The macOS version shows the same floating gauge panel as on Windows.
 It needs the free Xcode Command Line Tools (`xcode-select --install`) and
 Claude Code signed in once. Paste this into **Terminal**:
 
