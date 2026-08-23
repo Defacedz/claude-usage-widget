@@ -6,8 +6,10 @@ and the Claude logo. Drag it anywhere, right-click it for the menu.
 
 *Version française plus bas.*
 
-First macOS version: the gauge panel, countdowns, refresh, start at login.
-The local usage chart of the Windows version is planned next.
+Feature parity with the Windows version: the gauge panel, reset countdowns,
+the local usage chart (right-click → *Local usage details*), languages,
+opacity, hide in full-screen apps, log, restart, start at login, and the
+built-in update check (orange border + *Update available* in the menu).
 
 ## Requirements
 
@@ -50,9 +52,11 @@ les deux barres de jauge colorées (session 5 h et limite hebdomadaire), les
 comptes à rebours et le logo Claude. Déplaçable à la souris, clic droit pour
 le menu.
 
-Première version macOS : le panneau de jauges, les comptes à rebours,
-l'actualisation, le lancement à l'ouverture de session. Le graphique de conso
-locale de la version Windows viendra ensuite.
+Parité avec la version Windows : le panneau de jauges, les comptes à rebours,
+le graphique de conso locale (clic droit → *Détail conso locale*), les
+langues, l'opacité, le masquage en plein écran, le journal, le redémarrage,
+le lancement à l'ouverture de session, et la détection de mise à jour
+(contour orange + *Mise à jour disponible* dans le menu).
 
 ## Prérequis
 

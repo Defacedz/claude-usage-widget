@@ -15,7 +15,7 @@ import Foundation
 
 // Bump this when publishing: the update check compares it against the same
 // line in the repository's mac/ClaudeWidget.swift.
-let appVersion = "2026.08.25"
+let appVersion = "2026.08.26"
 let sourceUrl = "https://raw.githubusercontent.com/Defacedz/claude-usage-widget/main/mac/ClaudeWidget.swift"
 let webInstallCommand = "curl -fsSL https://raw.githubusercontent.com/Defacedz/claude-usage-widget/main/mac/web-install.sh | sh"
 
@@ -34,6 +34,16 @@ struct Strings {
     let menuLanguage: String
     let menuQuit: String
     let menuUpdate: String
+    let menuMoveBottomLeft: String
+    let menuOpacity: String
+    let menuHideFullScreen: String
+    let menuOpenLog: String
+    let menuRestart: String
+    let menuLocalDetail: String
+    let detailTitle: String
+    let detailWrites: String
+    let detailAnswers: String
+    let detailScanning: String
     let errNotSignedIn: String
     let errBadResponse: String
     let dayUnit: String
@@ -49,6 +59,14 @@ let catalog: [String: Strings] = [
                   menuRefresh: "Refresh", menuStartAtLogin: "Start at login",
                   menuLanguage: "Language",
                   menuQuit: "Quit", menuUpdate: "Update available",
+                  menuMoveBottomLeft: "Move to bottom left",
+                  menuOpacity: "Opacity",
+                  menuHideFullScreen: "Hide in full-screen apps",
+                  menuOpenLog: "Open log", menuRestart: "Restart widget",
+                  menuLocalDetail: "Local usage details",
+                  detailTitle: "Local usage - new tokens",
+                  detailWrites: "cache writes", detailAnswers: "prompts + answers",
+                  detailScanning: "scanning transcripts...",
                   errNotSignedIn: "Claude Code is not signed in (run it once)",
                   errBadResponse: "Unreadable API response",
                   dayUnit: "d", hourUnit: "h", minuteUnit: "min"),
@@ -59,6 +77,14 @@ let catalog: [String: Strings] = [
                   menuRefresh: "Actualiser", menuStartAtLogin: "Lancer à l'ouverture de session",
                   menuLanguage: "Langue",
                   menuQuit: "Quitter", menuUpdate: "Mise à jour disponible",
+                  menuMoveBottomLeft: "Replacer en bas à gauche",
+                  menuOpacity: "Opacité",
+                  menuHideFullScreen: "Masquer en plein écran",
+                  menuOpenLog: "Ouvrir le journal", menuRestart: "Redémarrer le widget",
+                  menuLocalDetail: "Détail conso locale",
+                  detailTitle: "Conso locale - tokens neufs",
+                  detailWrites: "écritures de cache", detailAnswers: "messages + réponses",
+                  detailScanning: "analyse des conversations...",
                   errNotSignedIn: "Claude Code n'est pas connecté (lance-le une fois)",
                   errBadResponse: "Réponse de l'API illisible",
                   dayUnit: "j", hourUnit: "h", minuteUnit: "min"),
@@ -69,6 +95,14 @@ let catalog: [String: Strings] = [
                   menuRefresh: "Actualizar", menuStartAtLogin: "Iniciar al abrir sesión",
                   menuLanguage: "Idioma",
                   menuQuit: "Salir", menuUpdate: "Actualización disponible",
+                  menuMoveBottomLeft: "Mover abajo a la izquierda",
+                  menuOpacity: "Opacidad",
+                  menuHideFullScreen: "Ocultar en pantalla completa",
+                  menuOpenLog: "Abrir el registro", menuRestart: "Reiniciar el widget",
+                  menuLocalDetail: "Detalle de uso local",
+                  detailTitle: "Uso local - tokens nuevos",
+                  detailWrites: "escrituras de caché", detailAnswers: "mensajes + respuestas",
+                  detailScanning: "analizando conversaciones...",
                   errNotSignedIn: "Claude Code no ha iniciado sesión (ejecútalo una vez)",
                   errBadResponse: "Respuesta de la API ilegible",
                   dayUnit: "d", hourUnit: "h", minuteUnit: "min"),
@@ -79,6 +113,14 @@ let catalog: [String: Strings] = [
                   menuRefresh: "Aktualisieren", menuStartAtLogin: "Bei Anmeldung starten",
                   menuLanguage: "Sprache",
                   menuQuit: "Beenden", menuUpdate: "Update verfügbar",
+                  menuMoveBottomLeft: "Unten links platzieren",
+                  menuOpacity: "Deckkraft",
+                  menuHideFullScreen: "Bei Vollbild ausblenden",
+                  menuOpenLog: "Protokoll öffnen", menuRestart: "Widget neu starten",
+                  menuLocalDetail: "Lokale Nutzungsdetails",
+                  detailTitle: "Lokale Nutzung - neue Tokens",
+                  detailWrites: "Cache-Schreibvorgänge", detailAnswers: "Nachrichten + Antworten",
+                  detailScanning: "Analyse der Unterhaltungen...",
                   errNotSignedIn: "Claude Code ist nicht angemeldet (einmal starten)",
                   errBadResponse: "Unlesbare API-Antwort",
                   dayUnit: "T", hourUnit: "h", minuteUnit: "Min")
@@ -185,6 +227,119 @@ enum Credentials {
         setString("refreshToken", new.refreshToken)
         setNumber("expiresAt", new.expiresAt)
         Keychain.writeJson(json)
+    }
+}
+
+// ---------- log ----------
+
+enum Log {
+    static let path = NSString(string: "~/Library/Logs/ClaudeWidget.log").expandingTildeInPath
+
+    static func write(_ msg: String) {
+        let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd HH:mm:ss"
+        let line = f.string(from: Date()) + "  " + msg + "
+"
+        let fm = FileManager.default
+        if let attrs = try? fm.attributesOfItem(atPath: path),
+           let size = attrs[.size] as? Int, size > 128 * 1024,
+           let old = try? String(contentsOfFile: path, encoding: .utf8) {
+            let lines = old.split(separator: "
+")
+            let keep = lines.suffix(lines.count / 2).joined(separator: "
+") + "
+"
+            try? keep.write(toFile: path, atomically: true, encoding: .utf8)
+        }
+        if let h = FileHandle(forWritingAtPath: path) {
+            h.seekToEndOfFile()
+            if let d = line.data(using: .utf8) { h.write(d) }
+            h.closeFile()
+        } else {
+            try? line.write(toFile: path, atomically: true, encoding: .utf8)
+        }
+    }
+}
+
+// ---------- local usage scan ----------
+// Reads the local Claude Code transcripts (~/.claude/projects/**/*.jsonl)
+// and sums the "new" tokens per day: cache writes, prompts and answers.
+// Disk reads only - it costs no tokens.
+
+struct LocalDaily {
+    var start: Date
+    var writes: [Int64]
+    var answers: [Int64]
+}
+
+enum LocalScan {
+    static func jsonString(_ line: String, _ key: String) -> String? {
+        guard let r = line.range(of: "\"\(key)\":\"") else { return nil }
+        let rest = line[r.upperBound...]
+        guard let end = rest.firstIndex(of: "\"") else { return nil }
+        return String(rest[..<end])
+    }
+
+    static func jsonNumber(_ line: String, _ key: String) -> Int64 {
+        guard let r = line.range(of: "\"\(key)\":") else { return 0 }
+        var i = r.upperBound
+        var digits = ""
+        while i < line.endIndex, line[i].isNumber {
+            digits.append(line[i]); i = line.index(after: i)
+        }
+        return Int64(digits) ?? 0
+    }
+
+    static func scanDaily(start: Date, progress: (Int, Int) -> Void) -> LocalDaily {
+        let cal = Calendar.current
+        let startDay = cal.startOfDay(for: start)
+        let today = cal.startOfDay(for: Date())
+        let n = max(1, (cal.dateComponents([.day], from: startDay, to: today).day ?? 0) + 1)
+        var d = LocalDaily(start: startDay,
+                           writes: [Int64](repeating: 0, count: n),
+                           answers: [Int64](repeating: 0, count: n))
+        let root = NSString(string: "~/.claude/projects").expandingTildeInPath
+        let fm = FileManager.default
+        guard let en = fm.enumerator(atPath: root) else { return d }
+
+        var files: [String] = []
+        let minModified = startDay.addingTimeInterval(-86400)
+        for case let rel as String in en {
+            guard rel.hasSuffix(".jsonl") else { continue }
+            let full = root + "/" + rel
+            if let attrs = try? fm.attributesOfItem(atPath: full),
+               let modified = attrs[.modificationDate] as? Date, modified >= minModified {
+                files.append(full)
+            }
+        }
+
+        var seen = Set<String>()
+        let iso = ISO8601DateFormatter()
+        iso.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let isoPlain = ISO8601DateFormatter()
+        isoPlain.formatOptions = [.withInternetDateTime]
+        var done = 0
+        for file in files {
+            autoreleasepool {
+                if let content = try? String(contentsOfFile: file, encoding: .utf8) {
+                    content.enumerateLines { line, _ in
+                        guard line.contains("\"assistant\""), line.contains("\"usage\"") else { return }
+                        guard let ts = jsonString(line, "timestamp"),
+                              let when = iso.date(from: ts) ?? isoPlain.date(from: ts) else { return }
+                        let day = cal.startOfDay(for: when)
+                        guard let idx = cal.dateComponents([.day], from: startDay, to: day).day,
+                              idx >= 0, idx < n else { return }
+                        // one API reply can be written as several lines
+                        let key = (jsonString(line, "id") ?? "") + "|" + (jsonString(line, "requestId") ?? "")
+                        if key.count > 1, !seen.insert(key).inserted { return }
+                        d.writes[idx] += jsonNumber(line, "cache_creation_input_tokens")
+                        d.answers[idx] += jsonNumber(line, "input_tokens") + jsonNumber(line, "output_tokens")
+                    }
+                }
+            }
+            done += 1
+            progress(done, files.count)
+        }
+        return d
     }
 }
 
@@ -427,6 +582,19 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     var lastUpdate: Date?
     var lastError: String?
     var updateAvailable = false
+    var hiddenForFullScreen = false
+    var localData: LocalDaily?
+    var localDataTs: Date?
+    var localScanning = false
+    var scanDone = 0
+    var scanTotal = 0
+    var detailWindow: NSWindow?
+    weak var chartView: ChartView?
+
+    var hideFullScreenEnabled: Bool {
+        get { return UserDefaults.standard.object(forKey: "hideFS") as? Bool ?? true }
+        set { UserDefaults.standard.set(newValue, forKey: "hideFS") }
+    }
 
     let agentPlist = NSString(string: "~/Library/LaunchAgents/com.defacedz.claudewidget.plist").expandingTildeInPath
 
@@ -461,6 +629,95 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         Timer.scheduledTimer(withTimeInterval: 6 * 3600, repeats: true) { [weak self] _ in
             self?.checkUpdate()
         }
+        let savedOpacity = UserDefaults.standard.double(forKey: "opacity")
+        window.alphaValue = (savedOpacity >= 0.2 && savedOpacity <= 1.0) ? CGFloat(savedOpacity) : 1.0
+        Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in self?.checkFullScreen() }
+        // background scan of the local transcripts: shortly after startup,
+        // then every 30 minutes, so the usage chart opens instantly
+        DispatchQueue.main.asyncAfter(deadline: .now() + 8) { [weak self] in self?.startLocalScan() }
+        Timer.scheduledTimer(withTimeInterval: 1800, repeats: true) { [weak self] _ in self?.startLocalScan() }
+    }
+
+    // A game or video running full-screen should not have the widget on top.
+    // We compare the frontmost app's top window to the screen size - the
+    // same heuristic as the Windows version.
+    func frontmostIsFullScreen() -> Bool {
+        guard let front = NSWorkspace.shared.frontmostApplication else { return false }
+        if front.processIdentifier == ProcessInfo.processInfo.processIdentifier { return false }
+        guard let list = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements],
+                                                    kCGNullWindowID) as? [[String: Any]] else { return false }
+        for info in list {
+            guard let pid = info[kCGWindowOwnerPID as String] as? Int32, pid == front.processIdentifier,
+                  let layer = info[kCGWindowLayer as String] as? Int, layer == 0,
+                  let bounds = info[kCGWindowBounds as String] as? [String: Any],
+                  let w = bounds["Width"] as? Double, let h = bounds["Height"] as? Double
+            else { continue }
+            for screen in NSScreen.screens {
+                if w >= Double(screen.frame.width), h >= Double(screen.frame.height) { return true }
+            }
+            break   // only the frontmost app's top window matters
+        }
+        return false
+    }
+
+    func checkFullScreen() {
+        let hide = hideFullScreenEnabled && frontmostIsFullScreen()
+        if hide != hiddenForFullScreen {
+            hiddenForFullScreen = hide
+            if hide { window.orderOut(nil) } else { window.orderFrontRegardless() }
+        }
+    }
+
+    func startLocalScan() {
+        if localScanning { return }
+        localScanning = true
+        scanDone = 0; scanTotal = 0
+        let cal = Calendar.current
+        let today = Date()
+        var comps = cal.dateComponents([.year, .month], from: today)
+        comps.day = 1
+        let firstOfMonth = cal.date(from: comps) ?? today
+        let start = cal.date(byAdding: .month, value: -1, to: firstOfMonth) ?? firstOfMonth
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            let data = LocalScan.scanDaily(start: start) { done, total in
+                DispatchQueue.main.async {
+                    self?.scanDone = done; self?.scanTotal = total
+                    self?.chartView?.needsDisplay = true
+                }
+            }
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                self.localScanning = false
+                if data.writes.count >= 2 { self.localData = data; self.localDataTs = Date() }
+                self.chartView?.needsDisplay = true
+            }
+        }
+    }
+
+    func showLocalDetail() {
+        if let existing = detailWindow { existing.close(); detailWindow = nil }
+        let view = ChartView(frame: NSRect(x: 0, y: 0, width: 584, height: 264))
+        view.app = self
+        let win = NSWindow(contentRect: view.frame,
+                           styleMask: [.titled, .closable], backing: .buffered, defer: false)
+        win.title = L.detailTitle
+        win.isReleasedWhenClosed = false
+        win.level = .floating
+        win.backgroundColor = NSColor(calibratedRed: 0.12, green: 0.13, blue: 0.16, alpha: 1)
+        win.contentView = view
+        var origin = NSPoint(x: window.frame.minX, y: window.frame.maxY + 12)
+        if let screen = NSScreen.main {
+            origin.x = min(origin.x, screen.visibleFrame.maxX - view.frame.width - 8)
+            origin.y = min(origin.y, screen.visibleFrame.maxY - view.frame.height - 30)
+        }
+        win.setFrameOrigin(origin)
+        detailWindow = win
+        chartView = view
+        win.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+        if localData == nil || (localDataTs.map { Date().timeIntervalSince($0) > 1800 } ?? true) {
+            startLocalScan()
+        }
     }
 
     // Compares the appVersion line of the repository's source with ours.
@@ -485,6 +742,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 guard let self = self else { return }
                 if self.updateAvailable != available {
                     self.updateAvailable = available
+                    if available { Log.write("update available (local " + appVersion + ")") }
                     self.gauge.needsDisplay = true
                 }
             }
@@ -500,8 +758,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             catch { err = error.localizedDescription }
             DispatchQueue.main.async {
                 guard let self = self else { return }
-                if let u = u { self.usage = u; self.lastUpdate = Date(); self.lastError = nil }
-                else { self.lastError = err }
+                if let u = u {
+                    if self.lastError != nil { Log.write("refresh recovered") }
+                    self.usage = u; self.lastUpdate = Date(); self.lastError = nil
+                } else {
+                    Log.write("refresh failed: " + (err ?? "?"))
+                    self.lastError = err
+                }
                 self.updateTooltip()
                 self.gauge.needsDisplay = true
             }
@@ -546,10 +809,26 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         refreshItem.target = self
         menu.addItem(refreshItem)
 
-        let loginItem = NSMenuItem(title: L.menuStartAtLogin, action: #selector(onToggleLogin), keyEquivalent: "")
-        loginItem.target = self
-        loginItem.state = FileManager.default.fileExists(atPath: agentPlist) ? .on : .off
-        menu.addItem(loginItem)
+        let detailItem = NSMenuItem(title: L.menuLocalDetail, action: #selector(onLocalDetail), keyEquivalent: "")
+        detailItem.target = self
+        menu.addItem(detailItem)
+
+        let moveItem = NSMenuItem(title: L.menuMoveBottomLeft, action: #selector(onMoveBottomLeft), keyEquivalent: "")
+        moveItem.target = self
+        menu.addItem(moveItem)
+
+        let opacityItem = NSMenuItem(title: L.menuOpacity, action: nil, keyEquivalent: "")
+        let opacityMenu = NSMenu()
+        for value in [1.0, 0.85, 0.7, 0.55, 0.4] {
+            let item = NSMenuItem(title: "\(Int(value * 100))%",
+                                  action: #selector(onSelectOpacity(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = value
+            item.state = abs(Double(window.alphaValue) - value) < 0.01 ? .on : .off
+            opacityMenu.addItem(item)
+        }
+        opacityItem.submenu = opacityMenu
+        menu.addItem(opacityItem)
 
         let langItem = NSMenuItem(title: L.menuLanguage, action: nil, keyEquivalent: "")
         let langMenu = NSMenu()
@@ -564,9 +843,65 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         langItem.submenu = langMenu
         menu.addItem(langItem)
 
+        let loginItem = NSMenuItem(title: L.menuStartAtLogin, action: #selector(onToggleLogin), keyEquivalent: "")
+        loginItem.target = self
+        loginItem.state = FileManager.default.fileExists(atPath: agentPlist) ? .on : .off
+        menu.addItem(loginItem)
+
+        let fullScreenItem = NSMenuItem(title: L.menuHideFullScreen, action: #selector(onToggleHideFullScreen), keyEquivalent: "")
+        fullScreenItem.target = self
+        fullScreenItem.state = hideFullScreenEnabled ? .on : .off
+        menu.addItem(fullScreenItem)
+
+        let logItem = NSMenuItem(title: L.menuOpenLog, action: #selector(onOpenLog), keyEquivalent: "")
+        logItem.target = self
+        menu.addItem(logItem)
+
+        let restartItem = NSMenuItem(title: L.menuRestart, action: #selector(onRestart), keyEquivalent: "")
+        restartItem.target = self
+        menu.addItem(restartItem)
+
         menu.addItem(NSMenuItem.separator())
         menu.addItem(NSMenuItem(title: L.menuQuit, action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
         return menu
+    }
+
+    @objc func onLocalDetail() { showLocalDetail() }
+
+    @objc func onMoveBottomLeft() {
+        if let screen = NSScreen.main {
+            window.setFrameOrigin(NSPoint(x: screen.visibleFrame.minX + 8,
+                                          y: screen.visibleFrame.minY + 8))
+        }
+    }
+
+    @objc func onSelectOpacity(_ sender: NSMenuItem) {
+        guard let value = sender.representedObject as? Double else { return }
+        window.alphaValue = CGFloat(value)
+        UserDefaults.standard.set(value, forKey: "opacity")
+    }
+
+    @objc func onToggleHideFullScreen() {
+        hideFullScreenEnabled = !hideFullScreenEnabled
+        // unticking it while hidden must bring the widget straight back
+        if !hideFullScreenEnabled, hiddenForFullScreen {
+            hiddenForFullScreen = false
+            window.orderFrontRegardless()
+        }
+    }
+
+    @objc func onOpenLog() {
+        if FileManager.default.fileExists(atPath: Log.path) {
+            NSWorkspace.shared.open(URL(fileURLWithPath: Log.path))
+        }
+    }
+
+    @objc func onRestart() {
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: "/usr/bin/open")
+        p.arguments = ["-n", Bundle.main.bundlePath]
+        try? p.run()
+        NSApp.terminate(nil)
     }
 
     @objc func onSelectLanguage(_ sender: NSMenuItem) {
@@ -610,3 +945,203 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 }
+
+
+// ---------- local usage chart ----------
+// The same chart as the Windows widget: stacked daily areas of new tokens
+// (cache writes below, prompts + answers on top) over the current and
+// previous month, with month markers, a peak label, a caption line and a
+// hover readout.
+
+final class ChartView: NSView {
+    weak var app: AppDelegate?
+    var hoverIndex: Int?
+
+    override var isFlipped: Bool { return true }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        for area in trackingAreas { removeTrackingArea(area) }
+        addTrackingArea(NSTrackingArea(rect: bounds,
+                                       options: [.mouseMoved, .mouseEnteredAndExited, .activeAlways],
+                                       owner: self, userInfo: nil))
+    }
+
+    let chartX: CGFloat = 12, chartY: CGFloat = 26
+    let cw: CGFloat = 560, ch: CGFloat = 200
+    let ml: CGFloat = 38, mr: CGFloat = 10, mt: CGFloat = 12, mb: CGFloat = 20
+
+    override func mouseMoved(with event: NSEvent) {
+        guard let data = app?.localData, data.writes.count >= 2 else { return }
+        let p = convert(event.locationInWindow, from: nil)
+        let n = data.writes.count
+        let plotW = cw - ml - mr
+        let i = Int(((p.x - chartX - ml) / (plotW / CGFloat(n - 1))).rounded())
+        let newIndex: Int? = (i >= 0 && i < n) ? i : nil
+        if newIndex != hoverIndex { hoverIndex = newIndex; needsDisplay = true }
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        if hoverIndex != nil { hoverIndex = nil; needsDisplay = true }
+    }
+
+    func chartLocale() -> Locale { return Locale(identifier: currentLangCode) }
+
+    func mt(_ tokens: Int64) -> String {
+        return String(format: "%.1f M", locale: chartLocale(), Double(tokens) / 1e6)
+    }
+
+    func put(_ str: String, _ size: CGFloat, _ color: NSColor, x: CGFloat, y: CGFloat,
+             bold: Bool = false, centered: Bool = false, rightAligned: Bool = false) {
+        let font = bold ? NSFont.monospacedDigitSystemFont(ofSize: size, weight: .semibold)
+                        : NSFont.monospacedDigitSystemFont(ofSize: size, weight: .regular)
+        let a = NSAttributedString(string: str, attributes: [.font: font, .foregroundColor: color])
+        let sz = a.size()
+        var px = x
+        if centered { px = x - sz.width / 2 }
+        if rightAligned { px = x - sz.width }
+        a.draw(at: NSPoint(x: px, y: y - sz.height / 2))
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        NSColor(calibratedRed: 0.12, green: 0.13, blue: 0.16, alpha: 1).setFill()
+        bounds.fill()
+
+        let gray = NSColor(calibratedRed: 0.61, green: 0.63, blue: 0.71, alpha: 1)
+        let muted = NSColor(calibratedRed: 0.42, green: 0.44, blue: 0.52, alpha: 1)
+        let ink = NSColor(calibratedRed: 0.91, green: 0.92, blue: 0.95, alpha: 1)
+        let colWrites = NSColor(calibratedRed: 0.85, green: 0.47, blue: 0.34, alpha: 1)
+        let colAnswers = NSColor(calibratedRed: 0.42, green: 0.62, blue: 0.91, alpha: 1)
+
+        // legend + week percentage
+        var lx: CGFloat = 14
+        for (color, label) in [(colWrites, L.detailWrites), (colAnswers, L.detailAnswers)] {
+            color.setFill()
+            NSBezierPath(roundedRect: NSRect(x: lx, y: 8, width: 9, height: 9), xRadius: 2, yRadius: 2).fill()
+            put(label, 10, gray, x: lx + 14, y: 13)
+            let labelWidth = NSAttributedString(string: label,
+                attributes: [.font: NSFont.monospacedDigitSystemFont(ofSize: 10, weight: .regular)]).size().width
+            lx += 14 + labelWidth + 18
+        }
+        if let seven = app?.usage?.sevenDay?.utilization {
+            put("\(L.week): \(Int(seven.rounded()))%", 10, gaugeColor(seven), x: bounds.width - 14, y: 13,
+                bold: true, rightAligned: true)
+        }
+
+        guard let data = app?.localData, data.writes.count >= 2 else {
+            var msg = L.detailScanning
+            if let a = app, a.scanTotal > 0 { msg += "  \(a.scanDone)/\(a.scanTotal)" }
+            put(msg, 11, gray, x: chartX + ml, y: chartY + ch / 2)
+            return
+        }
+
+        let n = data.writes.count
+        var tot = [Int64](repeating: 0, count: n)
+        var maxTot: Int64 = 1
+        for i in 0..<n {
+            tot[i] = data.writes[i] + data.answers[i]
+            if tot[i] > maxTot { maxTot = tot[i] }
+        }
+        let steps: [Double] = [2, 5, 10, 15, 20, 25, 30, 40, 50, 75, 100, 150, 200]
+        var stepM = steps.last!
+        for candidate in steps where 3 * candidate * 1e6 >= Double(maxTot) { stepM = candidate; break }
+        let ymax = 3 * stepM * 1e6
+
+        let plotW = cw - ml - mr, plotH = ch - mt - mb
+        func X(_ i: Int) -> CGFloat { return chartX + ml + plotW * CGFloat(i) / CGFloat(n - 1) }
+        func Y(_ v: Double) -> CGFloat { return chartY + mt + plotH * CGFloat(1 - v / ymax) }
+
+        // grid
+        for g in 0...3 {
+            let gy = Y(Double(g) * stepM * 1e6)
+            let line = NSBezierPath()
+            line.move(to: NSPoint(x: chartX + ml, y: gy))
+            line.line(to: NSPoint(x: chartX + cw - mr, y: gy))
+            (g == 0 ? NSColor(calibratedRed: 0.23, green: 0.24, blue: 0.32, alpha: 1)
+                    : NSColor(calibratedRed: 0.16, green: 0.18, blue: 0.23, alpha: 1)).setStroke()
+            line.lineWidth = 1
+            line.stroke()
+            if g > 0 { put("\(Int(stepM) * g)M", 9, muted, x: chartX + ml - 6, y: gy, rightAligned: true) }
+        }
+
+        // month markers and x labels
+        let dayFmt = DateFormatter(); dayFmt.locale = chartLocale(); dayFmt.dateFormat = "d MMM"
+        let cal = Calendar.current
+        var lastLabelX: CGFloat = -100
+        for i in 0..<n {
+            guard let date = cal.date(byAdding: .day, value: i, to: data.start) else { continue }
+            let day = cal.component(.day, from: date)
+            if day == 1, i > 0 {
+                let line = NSBezierPath()
+                line.move(to: NSPoint(x: X(i), y: chartY + mt))
+                line.line(to: NSPoint(x: X(i), y: chartY + ch - mb))
+                NSColor(calibratedRed: 0.29, green: 0.31, blue: 0.39, alpha: 1).setStroke()
+                line.setLineDash([3, 4], count: 2, phase: 0)
+                line.lineWidth = 1
+                line.stroke()
+            }
+            if day == 1 || day == 15 || i == n - 1 {
+                let labelX = X(i)
+                if labelX - lastLabelX >= 34 {
+                    put(dayFmt.string(from: date), 9, muted,
+                        x: min(labelX, chartX + cw - 30), y: chartY + ch - mb + 10, centered: true)
+                    lastLabelX = labelX
+                }
+            }
+        }
+
+        // stacked areas: writes below, answers on top
+        let writesPath = NSBezierPath()
+        writesPath.move(to: NSPoint(x: X(0), y: Y(Double(data.writes[0]))))
+        for i in 1..<n { writesPath.line(to: NSPoint(x: X(i), y: Y(Double(data.writes[i])))) }
+        for i in stride(from: n - 1, through: 0, by: -1) { writesPath.line(to: NSPoint(x: X(i), y: Y(0))) }
+        writesPath.close()
+        let answersPath = NSBezierPath()
+        answersPath.move(to: NSPoint(x: X(0), y: Y(Double(tot[0]))))
+        for i in 1..<n { answersPath.line(to: NSPoint(x: X(i), y: Y(Double(tot[i])))) }
+        for i in stride(from: n - 1, through: 0, by: -1) { answersPath.line(to: NSPoint(x: X(i), y: Y(Double(data.writes[i])))) }
+        answersPath.close()
+        colAnswers.setFill(); answersPath.fill()
+        colWrites.setFill(); writesPath.fill()
+        let seam = NSBezierPath()
+        seam.move(to: NSPoint(x: X(0), y: Y(Double(data.writes[0]))))
+        for i in 1..<n { seam.line(to: NSPoint(x: X(i), y: Y(Double(data.writes[i])))) }
+        NSColor(calibratedRed: 0.12, green: 0.13, blue: 0.16, alpha: 1).setStroke()
+        seam.lineWidth = 1.2
+        seam.stroke()
+
+        // peak label
+        var peak = 0
+        for i in 1..<n where tot[i] > tot[peak] { peak = i }
+        if tot[peak] > 0 {
+            put(mt(tot[peak]), 9.5, ink,
+                x: max(chartX + ml + 16, min(X(peak), chartX + cw - 30)),
+                y: max(chartY + 6, Y(Double(tot[peak])) - 10), bold: true, centered: true)
+        }
+
+        // caption: hover readout, or the month totals + refresh time
+        let monthFmt = DateFormatter(); monthFmt.locale = chartLocale(); monthFmt.dateFormat = "MMMM"
+        let hoverFmt = DateFormatter(); hoverFmt.locale = chartLocale(); hoverFmt.dateFormat = "EEE d MMM"
+        var caption = ""
+        if let i = hoverIndex, i < n, let date = cal.date(byAdding: .day, value: i, to: data.start) {
+            caption = hoverFmt.string(from: date) + ": " + mt(tot[i])
+                + "  (" + L.detailWrites + " " + mt(data.writes[i])
+                + " · " + L.detailAnswers + " " + mt(data.answers[i]) + ")"
+        } else {
+            let thisMonth = cal.component(.month, from: Date())
+            var cur: Int64 = 0, prev: Int64 = 0
+            for i in 0..<n {
+                if let date = cal.date(byAdding: .day, value: i, to: data.start),
+                   cal.component(.month, from: date) == thisMonth { cur += tot[i] } else { prev += tot[i] }
+            }
+            caption = monthFmt.string(from: Date()) + ": " + mt(cur)
+                + "   ·   " + monthFmt.string(from: data.start) + ": " + mt(prev)
+            if let ts = app?.localDataTs {
+                let f = DateFormatter(); f.dateFormat = "HH:mm"
+                caption += "   ·   " + String(format: L.updated, f.string(from: ts))
+            }
+        }
+        put(caption, 10.5, gray, x: 14, y: bounds.height - 14)
+    }
+}
+
