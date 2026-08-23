@@ -298,7 +298,7 @@ namespace ClaudeWidgetApp
     {
         // Bump this when publishing: the update check compares it against the
         // same line in the repository's ClaudeWidget.cs.
-        public const string Version = "2026.08.23";
+        public const string Version = "2026.08.24";
         const string SourceUrl = "https://raw.githubusercontent.com/Defacedz/claude-usage-widget/main/ClaudeWidget.cs";
         public const string WebInstall = "https://raw.githubusercontent.com/Defacedz/claude-usage-widget/main/web-install.ps1";
 
@@ -1192,9 +1192,17 @@ namespace ClaudeWidgetApp
             };
         }
 
+        // Numbers and dates in the chart follow the widget's language, not the
+        // Windows locale - an English widget must not show French month names.
+        static CultureInfo Ci()
+        {
+            try { return new CultureInfo(L.Code); }
+            catch { return CultureInfo.InvariantCulture; }
+        }
+
         static string Mt(long tokens)
         {
-            return string.Format("{0:0.0} M", tokens / 1e6);
+            return string.Format(Ci(), "{0:0.0} M", tokens / 1e6);
         }
 
         static StackPanel LegendChip(string hex, string label)
@@ -1360,7 +1368,7 @@ namespace ClaudeWidgetApp
                             {
                                 var xl = new TextBlock
                                 {
-                                    Text = dte.ToString("d MMM"), FontSize = 9, Foreground = B("#6C7086")
+                                    Text = dte.ToString("d MMM", Ci()), FontSize = 9, Foreground = B("#6C7086")
                                 };
                                 Canvas.SetLeft(xl, Math.Min(lx - 12, CW - 42));
                                 Canvas.SetTop(xl, CH - MB + 4);
@@ -1405,8 +1413,8 @@ namespace ClaudeWidgetApp
                         if (t.Start.AddDays(i).Month == today.Month) curMonth += tot[i];
                         else prevMonth += tot[i];
                     }
-                    string byMonth = today.ToString("MMMM") + L.Colon + Mt(curMonth) + "   ·   " +
-                                     start.ToString("MMMM") + L.Colon + Mt(prevMonth);
+                    string byMonth = today.ToString("MMMM", Ci()) + L.Colon + Mt(curMonth) + "   ·   " +
+                                     start.ToString("MMMM", Ci()) + L.Colon + Mt(prevMonth);
                     info.Text = byMonth;
 
                     canvas.MouseMove += delegate(object s, MouseEventArgs e)
@@ -1414,7 +1422,7 @@ namespace ClaudeWidgetApp
                         double mx = e.GetPosition(canvas).X;
                         int i = (int)Math.Round((mx - ML) / (plotW / (n - 1)));
                         if (i < 0 || i >= n) { info.Text = byMonth; return; }
-                        info.Text = t.Start.AddDays(i).ToString("ddd d MMM") + L.Colon + Mt(tot[i]) +
+                        info.Text = t.Start.AddDays(i).ToString("ddd d MMM", Ci()) + L.Colon + Mt(tot[i]) +
                                     "  (" + L.DetailWrites + " " + Mt(t.Writes[i]) + " · " +
                                     L.DetailAnswers + " " + Mt(t.Answers[i]) + ")";
                     };
