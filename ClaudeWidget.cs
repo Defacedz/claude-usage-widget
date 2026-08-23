@@ -298,7 +298,7 @@ namespace ClaudeWidgetApp
     {
         // Bump this when publishing: the update check compares it against the
         // same line in the repository's ClaudeWidget.cs.
-        public const string Version = "2026.08.24";
+        public const string Version = "2026.08.25";
         const string SourceUrl = "https://raw.githubusercontent.com/Defacedz/claude-usage-widget/main/ClaudeWidget.cs";
         public const string WebInstall = "https://raw.githubusercontent.com/Defacedz/claude-usage-widget/main/web-install.ps1";
 
@@ -639,7 +639,7 @@ namespace ClaudeWidgetApp
             return m.Success && long.TryParse(m.Groups[1].Value, out v) ? v : 0;
         }
 
-        public static LocalDaily ScanDaily(DateTime startLocalDate)
+        public static LocalDaily ScanDaily(DateTime startLocalDate, Action<int, int> progress)
         {
             int n = (DateTime.Today - startLocalDate).Days + 1;
             if (n < 1) n = 1;
@@ -650,13 +650,20 @@ namespace ClaudeWidgetApp
                 Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".claude\\projects");
             if (!Directory.Exists(root)) return d;
 
+            // list eligible files first so the progress counter has a total
+            var files = new List<string>();
             foreach (string dir in Directory.GetDirectories(root))
-            {
                 foreach (string file in Directory.GetFiles(dir, "*.jsonl", SearchOption.AllDirectories))
+                {
+                    try { if (File.GetLastWriteTimeUtc(file) >= minMtimeUtc) files.Add(file); }
+                    catch { }
+                }
+
+            int done = 0;
+            foreach (string file in files)
                 {
                     try
                     {
-                        if (File.GetLastWriteTimeUtc(file) < minMtimeUtc) continue;
                         using (var r = new StreamReader(file))
                         {
                             string line;
@@ -684,8 +691,9 @@ namespace ClaudeWidgetApp
                         }
                     }
                     catch { }
+                    done++;
+                    if (progress != null) progress(done, files.Count);
                 }
-            }
             return d;
         }
     }
@@ -836,6 +844,15 @@ namespace ClaudeWidgetApp
                 var t4 = new DispatcherTimer { Interval = TimeSpan.FromHours(6) };
                 t4.Tick += delegate { CheckUpdate(); };
                 t4.Start();
+                // background scan of the local transcripts: shortly after
+                // startup, then every 30 minutes, so the usage chart opens
+                // instantly instead of rescanning on every click
+                var scanKick = new DispatcherTimer { Interval = TimeSpan.FromSeconds(8) };
+                scanKick.Tick += delegate { scanKick.Stop(); StartLocalScan(); };
+                scanKick.Start();
+                var t5 = new DispatcherTimer { Interval = TimeSpan.FromMinutes(30) };
+                t5.Tick += delegate { StartLocalScan(); };
+                t5.Start();
                 // handy for tests and screenshots: open the chart right away
                 foreach (string a in Environment.GetCommandLineArgs())
                     if (a == "--detail") { ShowLocalDetail(); break; }
@@ -1178,6 +1195,47 @@ namespace ClaudeWidgetApp
 
         // ---------- local usage window ----------
         Window _detail;
+        Action _detailRender;   // repaints the open window when a scan lands
+
+        // The scan only reads the local transcript files - disk time, zero
+        // tokens. It runs in the background at startup and every 30 minutes,
+        // so opening the window is instant: it shows the cached chart with
+        // the time of the last refresh, or a file counter while the very
+        // first scan is still running.
+        static LocalDaily _localData;
+        static DateTime _localDataTs;
+        static bool _localScanning;
+        static int _scanDone, _scanTotal;
+
+        string ScanProgressText()
+        {
+            return L.DetailScanning + (_scanTotal > 0 ? "  " + _scanDone + "/" + _scanTotal : "");
+        }
+
+        void StartLocalScan()
+        {
+            if (_localScanning) return;
+            _localScanning = true;
+            _scanDone = 0; _scanTotal = 0;
+            DateTime today = DateTime.Today;
+            DateTime start = new DateTime(today.Year, today.Month, 1).AddMonths(-1);
+            ThreadPool.QueueUserWorkItem(delegate
+            {
+                LocalDaily t = null;
+                try
+                {
+                    t = LocalStats.ScanDaily(start, delegate(int done, int total)
+                    { _scanDone = done; _scanTotal = total; });
+                }
+                catch (Exception e) { Api.Log("local scan failed: " + e.Message); }
+                Dispatcher.BeginInvoke(new Action(delegate
+                {
+                    _localScanning = false;
+                    if (t != null && t.Writes.Length >= 2) { _localData = t; _localDataTs = DateTime.Now; }
+                    if (_detailRender != null) _detailRender();
+                }));
+            });
+        }
 
         static TextBlock DetailText(string text, double size, string hex, bool bold)
         {
@@ -1290,20 +1348,20 @@ namespace ClaudeWidgetApp
             };
             win.KeyDown += delegate(object s, KeyEventArgs e)
             { if (e.Key == Key.Escape) win.Close(); };
-            win.Closed += delegate { if (_detail == win) _detail = null; };
+            var ticker = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
+            win.Closed += delegate { if (_detail == win) { _detail = null; _detailRender = null; } ticker.Stop(); };
             _detail = win;
             win.Show();
 
-            ThreadPool.QueueUserWorkItem(delegate
+            // Paints the cached data instantly; called again when a scan lands.
+            Action render = delegate
             {
-                LocalDaily t = null;
-                try { t = LocalStats.ScanDaily(start); }
-                catch (Exception e) { Api.Log("local scan failed: " + e.Message); }
-                win.Dispatcher.BeginInvoke(new Action(delegate
                 {
-                    if (t == null || t.Writes.Length < 2)
+                    LocalDaily t = _localData;
+                    canvas.Children.Clear();
+                    if (t == null)
                     {
-                        info.Text = L.ErrBadResponse;
+                        info.Text = _localScanning ? ScanProgressText() : L.ErrBadResponse;
                         return;
                     }
                     int n = t.Writes.Length;
@@ -1414,7 +1472,8 @@ namespace ClaudeWidgetApp
                         else prevMonth += tot[i];
                     }
                     string byMonth = today.ToString("MMMM", Ci()) + L.Colon + Mt(curMonth) + "   ·   " +
-                                     start.ToString("MMMM", Ci()) + L.Colon + Mt(prevMonth);
+                                     start.ToString("MMMM", Ci()) + L.Colon + Mt(prevMonth) +
+                                     "   ·   " + string.Format(L.Updated, _localDataTs.ToString("HH:mm"));
                     info.Text = byMonth;
 
                     canvas.MouseMove += delegate(object s, MouseEventArgs e)
@@ -1427,8 +1486,20 @@ namespace ClaudeWidgetApp
                                     L.DetailAnswers + " " + Mt(t.Answers[i]) + ")";
                     };
                     canvas.MouseLeave += delegate { info.Text = byMonth; };
-                }));
-            });
+                }
+            };
+            _detailRender = render;
+            render();
+
+            // refresh stale data; the ticker keeps the file counter moving
+            // while the very first scan runs
+            if (_localData == null || (DateTime.Now - _localDataTs).TotalMinutes >= 30) StartLocalScan();
+            ticker.Tick += delegate
+            {
+                if (!win.IsVisible) { ticker.Stop(); return; }
+                if (_localScanning && _localData == null) info.Text = ScanProgressText();
+            };
+            ticker.Start();
         }
 
         // ---------- menu ----------
