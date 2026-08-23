@@ -237,17 +237,13 @@ enum Log {
 
     static func write(_ msg: String) {
         let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd HH:mm:ss"
-        let line = f.string(from: Date()) + "  " + msg + "
-"
+        let line = f.string(from: Date()) + "  " + msg + "\n"
         let fm = FileManager.default
         if let attrs = try? fm.attributesOfItem(atPath: path),
            let size = attrs[.size] as? Int, size > 128 * 1024,
            let old = try? String(contentsOfFile: path, encoding: .utf8) {
-            let lines = old.split(separator: "
-")
-            let keep = lines.suffix(lines.count / 2).joined(separator: "
-") + "
-"
+            let lines = old.split(separator: "\n")
+            let keep = lines.suffix(lines.count / 2).joined(separator: "\n") + "\n"
             try? keep.write(toFile: path, atomically: true, encoding: .utf8)
         }
         if let h = FileHandle(forWritingAtPath: path) {
