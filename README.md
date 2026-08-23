@@ -36,17 +36,13 @@ and the on-screen keyboard use.
 
 <img src="docs/screenshot-usage.png" alt="The local usage chart: stacked daily new tokens over two months" width="480">
 
-**macOS**: a menu-bar version lives in [`mac/`](mac/README.md) — same gauges,
-same keychain-safe token handling, built from source with the free Xcode
-Command Line Tools.
-
-## Requirements
+## Requirements (Windows)
 
 - Windows 10 or 11
 - .NET Framework 4.x (present on every supported Windows — nothing to install)
 - [Claude Code](https://claude.com/claude-code) installed and signed in once
 
-## Install
+## Install (Windows)
 
 Paste this into **PowerShell** and accept the administrator prompt:
 
@@ -78,6 +74,22 @@ corner. Right-click it for language, opacity, autostart and quit.
   the widget to stay above the taskbar. **Adding a root certificate is not a
   trivial change** — see [Uninstall](#uninstall) to remove it.
 - Copies the signed binary to `C:\Program Files\ClaudeWidget\` and starts it.
+
+## Install (macOS)
+
+The macOS version shows the same gauges as a menu-bar item (`✱ 31% · 60%`).
+It needs the free Xcode Command Line Tools (`xcode-select --install`) and
+Claude Code signed in once. Paste this into **Terminal**:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/Defacedz/claude-usage-widget/main/mac/web-install.sh | sh
+```
+
+That downloads this repository to a temporary folder, builds
+`mac/ClaudeWidget.swift` **on your machine** and installs the app in
+`~/Applications`. At first launch, allow the keychain access ("Always
+Allow") — that is where Claude Code keeps the token on macOS. Details,
+manual install and uninstall: [`mac/README.md`](mac/README.md).
 
 ## What it reads and writes
 

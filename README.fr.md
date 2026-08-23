@@ -39,17 +39,13 @@ Loupe ou le clavier visuel.
 
 <img src="docs/screenshot-usage.png" alt="Le graphique de conso locale : tokens neufs par jour sur deux mois" width="480">
 
-**macOS** : une version pour la barre de menus vit dans
-[`mac/`](mac/README.md) — mêmes jauges, même gestion sûre du jeton via le
-trousseau, compilée depuis les sources avec les outils gratuits d'Apple.
-
-## Prérequis
+## Prérequis (Windows)
 
 - Windows 10 ou 11
 - .NET Framework 4.x (présent sur tout Windows encore supporté — rien à installer)
 - [Claude Code](https://claude.com/claude-code) installé et connecté une fois
 
-## Installation
+## Installation (Windows)
 
 Collez ceci dans **PowerShell** et acceptez la demande d'élévation :
 
@@ -84,6 +80,24 @@ quitter.
   **Ajouter un certificat racine n'est pas un geste anodin** — voir
   [Désinstallation](#désinstallation) pour le retirer.
 - Copie le binaire signé dans `C:\Program Files\ClaudeWidget\` et le lance.
+
+## Installation (macOS)
+
+La version macOS affiche les mêmes jauges dans la barre de menus
+(`✱ 31% · 60%`). Elle demande les outils en ligne de commande Xcode
+(gratuits, `xcode-select --install`) et Claude Code connecté une fois.
+Collez ceci dans le **Terminal** :
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/Defacedz/claude-usage-widget/main/mac/web-install.sh | sh
+```
+
+La commande télécharge ce dépôt dans un dossier temporaire, compile
+`mac/ClaudeWidget.swift` **sur votre machine** et installe l'app dans
+`~/Applications`. Au premier lancement, autorisez l'accès au trousseau
+(« Toujours autoriser ») — c'est là que Claude Code range le jeton sur macOS.
+Détails, installation manuelle et désinstallation :
+[`mac/README.md`](mac/README.md).
 
 ## Ce qui est lu et écrit
 
