@@ -15,7 +15,9 @@ fi
 
 echo "1/3 Building..."
 TMP="$(mktemp -d)"
-swiftc -O -o "$TMP/ClaudeWidget" "$HERE/ClaudeWidget.swift"
+# -parse-as-library: a single-file build is otherwise treated as a script,
+# which rejects the @main entry point
+swiftc -O -parse-as-library -o "$TMP/ClaudeWidget" "$HERE/ClaudeWidget.swift"
 
 echo "2/3 Installing to $APP ..."
 # stop a running instance so the binary can be replaced
