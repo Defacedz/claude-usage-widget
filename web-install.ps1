@@ -45,8 +45,13 @@ try {
     if (-not (Test-Path $installer)) { throw 'Installer.ps1 is missing from the archive.' }
 
     Write-Host '3/3 Running the installer - accept the administrator prompt.'
-    Start-Process powershell -Verb RunAs -Wait -ArgumentList @(
+    # -PassThru + WaitForExit, not -Wait: Start-Process -Wait puts the child in
+    # a job object and waits for the whole tree, and the installer's last step
+    # starts the widget itself. With -Wait this window stayed open for as long
+    # as the widget ran. WaitForExit waits for the installer alone.
+    $proc = Start-Process powershell -Verb RunAs -PassThru -ArgumentList @(
         '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', ('"' + $installer + '"'))
+    if ($proc) { $proc.WaitForExit() }
 }
 catch {
     Write-Host ''
@@ -58,3 +63,8 @@ finally {
     # only needed during the build.
     Remove-Item $work -Recurse -Force -ErrorAction SilentlyContinue
 }
+
+# Started from the widget as `powershell -Command "irm ... | iex"`, so exiting
+# here is what closes the window. The elevated installer keeps its own
+# Press-Enter prompt: it is the one carrying any error message worth reading.
+exit 0
