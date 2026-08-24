@@ -378,7 +378,7 @@ namespace ClaudeWidgetApp
     {
         // Bump this when publishing: the update check compares it against the
         // same line in the repository's ClaudeWidget.cs.
-        public const string Version = "2026.08.30";
+        public const string Version = "2026.08.31";
         const string SourceUrl = "https://raw.githubusercontent.com/Defacedz/claude-usage-widget/main/ClaudeWidget.cs";
         public const string WebInstall = "https://raw.githubusercontent.com/Defacedz/claude-usage-widget/main/web-install.ps1";
 
@@ -916,6 +916,7 @@ namespace ClaudeWidgetApp
             _root.Child = shell;
             Content = _root;
 
+            ApplySkinToApp();
             BuildMenu();
             Redraw();
 
@@ -1821,6 +1822,26 @@ namespace ClaudeWidgetApp
       </Setter.Value>
     </Setter>
   </Style>
+  <Style TargetType='ToolTip'>
+    <Setter Property='OverridesDefaultStyle' Value='True'/>
+    <!-- HasDropShadow is what decides whether the tooltip's popup allows
+         transparency. Left to the system setting it can be False, and then
+         the popup paints an opaque white rectangle behind our rounded panel -
+         the white square this style exists to get rid of. -->
+    <Setter Property='HasDropShadow' Value='True'/>
+    <Setter Property='Foreground' Value='@INK@'/>
+    <Setter Property='FontSize' Value='11'/>
+    <Setter Property='Template'>
+      <Setter.Value>
+        <ControlTemplate TargetType='ToolTip'>
+          <Border Background='@PANEL@' BorderBrush='@MENUBORDER@' BorderThickness='1'
+                  CornerRadius='6' Padding='9,6'>
+            <ContentPresenter/>
+          </Border>
+        </ControlTemplate>
+      </Setter.Value>
+    </Setter>
+  </Style>
   <Style TargetType='MenuItem'>
     <Setter Property='OverridesDefaultStyle' Value='True'/>
     <Setter Property='Foreground' Value='@INK@'/>
@@ -1874,6 +1895,25 @@ namespace ClaudeWidgetApp
         static ResourceDictionary _menuSkin;
         static string _menuSkinFor;     // the theme the cached skin was built for
 
+        // The skin has to live in the application's resources, not the
+        // window's: a tooltip is hosted in its own popup, and only an
+        // application-level dictionary is certain to reach it.
+        static ResourceDictionary _appliedSkin;
+
+        static void ApplySkinToApp()
+        {
+            Application app = Application.Current;
+            if (app == null) return;
+            try
+            {
+                if (_appliedSkin != null) app.Resources.MergedDictionaries.Remove(_appliedSkin);
+                _appliedSkin = MenuSkin();
+                app.Resources.MergedDictionaries.Add(_appliedSkin);
+            }
+            catch { }
+        }
+
+
         static ResourceDictionary MenuSkin()
         {
             Theme t = Theme.Current;
@@ -1897,6 +1937,7 @@ namespace ClaudeWidgetApp
         void ApplyTheme()
         {
             _root.Background = B(Theme.Current.Panel);
+            ApplySkinToApp();
             BuildMenu();
             Redraw();
             if (_detail != null) ShowLocalDetail();
