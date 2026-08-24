@@ -72,7 +72,23 @@ try {
     Remove-Item $exe -Force -ErrorAction SilentlyContinue
 
     Write-Host '6/6 Starting...'
-    Start-Process (Join-Path $destDir 'ClaudeWidget.exe')
+    # Launched straight from this elevated shell, the widget would inherit
+    # administrator rights it never needs - and would keep them until the next
+    # sign-in. Handing the path to Explorer starts it with the normal user
+    # token instead, exactly as the Startup shortcut does. If the shell is not
+    # running (replaced, or a bare session), fall back to starting it here.
+    $widget = Join-Path $destDir 'ClaudeWidget.exe'
+    $started = $false
+    if (Get-Process -Name 'explorer' -ErrorAction SilentlyContinue) {
+        try {
+            Start-Process 'explorer.exe' -ArgumentList ('"' + $widget + '"')
+            for ($i = 0; $i -lt 20 -and -not $started; $i++) {
+                Start-Sleep -Milliseconds 250
+                $started = [bool](Get-Process -Name 'ClaudeWidget' -ErrorAction SilentlyContinue)
+            }
+        } catch { $started = $false }
+    }
+    if (-not $started) { Start-Process $widget }
 
     Write-Host "`n[OK] Installed and started from $destDir" -ForegroundColor Green
     Write-Host 'Right-click the widget for language, opacity, autostart and quit.'

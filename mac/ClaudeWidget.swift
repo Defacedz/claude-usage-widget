@@ -15,7 +15,7 @@ import Foundation
 
 // Bump this when publishing: the update check compares it against the same
 // line in the repository's mac/ClaudeWidget.swift.
-let appVersion = "2026.08.28"
+let appVersion = "2026.08.29"
 let sourceUrl = "https://raw.githubusercontent.com/Defacedz/claude-usage-widget/main/mac/ClaudeWidget.swift"
 let webInstallCommand = "curl -fsSL https://raw.githubusercontent.com/Defacedz/claude-usage-widget/main/mac/web-install.sh | sh"
 
