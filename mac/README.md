@@ -11,7 +11,8 @@ the local usage chart (right-click → *Local usage details*), the two themes
 (right-click → Theme: *Dark* or *Ivory*), languages, opacity, hide in
 full-screen apps, log, restart, start at login, and the built-in update check
 (orange border + *Update available* in the menu, also refreshed on every
-*Refresh* click).
+*Refresh* click). Choosing *Update available* opens a Terminal window and runs
+the installer there, so the build is visible and a failure says why.
 
 ## Requirements
 

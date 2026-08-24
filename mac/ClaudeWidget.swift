@@ -15,7 +15,7 @@ import Foundation
 
 // Bump this when publishing: the update check compares it against the same
 // line in the repository's mac/ClaudeWidget.swift.
-let appVersion = "2026.08.30"
+let appVersion = "2026.08.31"
 let sourceUrl = "https://raw.githubusercontent.com/Defacedz/claude-usage-widget/main/mac/ClaudeWidget.swift"
 let webInstallCommand = "curl -fsSL https://raw.githubusercontent.com/Defacedz/claude-usage-widget/main/mac/web-install.sh | sh"
 
@@ -1024,11 +1024,47 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     // web-install.sh downloads the repository, rebuilds from source, kills
     // this instance and starts the new one. The shell survives us dying.
+    // The installer builds from source with swiftc and takes a while, so it
+    // has to be visible. Run straight through /bin/sh from a GUI app its
+    // output goes nowhere: a missing swiftc, a network error, anything at all
+    // left the menu entry looking as though it simply did nothing.
+    //
+    // A .command file opened with Terminal shows the whole build. This route
+    // needs no Automation permission, unlike telling Terminal what to do over
+    // AppleScript, which macOS gates behind a prompt that can be refused
+    // without the app ever hearing about it.
     @objc func onUpdate() {
-        let p = Process()
-        p.executableURL = URL(fileURLWithPath: "/bin/sh")
-        p.arguments = ["-c", webInstallCommand]
-        try? p.run()
+        let dir = NSHomeDirectory() + "/Library/Application Support/ClaudeWidget"
+        let path = dir + "/update.command"
+        let script = """
+        #!/bin/sh
+        echo "Claude Usage Widget - update"
+        echo ""
+        \(webInstallCommand)
+        status=$?
+        echo ""
+        if [ $status -eq 0 ]; then
+            echo "[OK] Updated. You can close this window."
+        else
+            echo "[ERROR] The update failed (exit $status)."
+            echo "If swiftc is missing, install the Xcode Command Line Tools:"
+            echo "  xcode-select --install"
+        fi
+        """
+        do {
+            try FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
+            try script.write(toFile: path, atomically: true, encoding: .utf8)
+            try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: path)
+            let launcher = Process()
+            launcher.executableURL = URL(fileURLWithPath: "/usr/bin/open")
+            launcher.arguments = ["-a", "Terminal", path]
+            try launcher.run()
+            Log.write("update launched in Terminal")
+        } catch {
+            Log.write("update launch failed: " + error.localizedDescription)
+            // Last resort: let the system pick whatever handles a .command.
+            _ = NSWorkspace.shared.open(URL(fileURLWithPath: path))
+        }
     }
 
     @objc func onToggleLogin() {
