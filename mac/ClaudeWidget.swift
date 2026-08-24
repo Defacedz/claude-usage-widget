@@ -15,7 +15,7 @@ import Foundation
 
 // Bump this when publishing: the update check compares it against the same
 // line in the repository's mac/ClaudeWidget.swift.
-let appVersion = "2026.08.26"
+let appVersion = "2026.08.27"
 let sourceUrl = "https://raw.githubusercontent.com/Defacedz/claude-usage-widget/main/mac/ClaudeWidget.swift"
 let webInstallCommand = "curl -fsSL https://raw.githubusercontent.com/Defacedz/claude-usage-widget/main/mac/web-install.sh | sh"
 
@@ -49,6 +49,9 @@ struct Strings {
     let dayUnit: String
     let hourUnit: String
     let minuteUnit: String
+    let menuTheme: String          // appearance submenu
+    let themeDark: String
+    let themeIvory: String
 }
 
 let catalog: [String: Strings] = [
@@ -69,7 +72,8 @@ let catalog: [String: Strings] = [
                   detailScanning: "scanning transcripts...",
                   errNotSignedIn: "Claude Code is not signed in (run it once)",
                   errBadResponse: "Unreadable API response",
-                  dayUnit: "d", hourUnit: "h", minuteUnit: "min"),
+                  dayUnit: "d", hourUnit: "h", minuteUnit: "min",
+                  menuTheme: "Theme", themeDark: "Dark", themeIvory: "Ivory"),
     "fr": Strings(session5h: "Session 5 h", week: "Semaine",
                   short5h: "5h", short7d: "7j",
                   resetsIn: "reset dans %@", updated: "maj %@",
@@ -87,7 +91,8 @@ let catalog: [String: Strings] = [
                   detailScanning: "analyse des conversations...",
                   errNotSignedIn: "Claude Code n'est pas connecté (lance-le une fois)",
                   errBadResponse: "Réponse de l'API illisible",
-                  dayUnit: "j", hourUnit: "h", minuteUnit: "min"),
+                  dayUnit: "j", hourUnit: "h", minuteUnit: "min",
+                  menuTheme: "Thème", themeDark: "Sombre", themeIvory: "Ivoire"),
     "es": Strings(session5h: "Sesión de 5 h", week: "Semana",
                   short5h: "5h", short7d: "7d",
                   resetsIn: "se reinicia en %@", updated: "act. %@",
@@ -105,7 +110,8 @@ let catalog: [String: Strings] = [
                   detailScanning: "analizando conversaciones...",
                   errNotSignedIn: "Claude Code no ha iniciado sesión (ejecútalo una vez)",
                   errBadResponse: "Respuesta de la API ilegible",
-                  dayUnit: "d", hourUnit: "h", minuteUnit: "min"),
+                  dayUnit: "d", hourUnit: "h", minuteUnit: "min",
+                  menuTheme: "Tema", themeDark: "Oscuro", themeIvory: "Marfil"),
     "de": Strings(session5h: "5-Stunden-Sitzung", week: "Woche",
                   short5h: "5h", short7d: "7T",
                   resetsIn: "zurückgesetzt in %@", updated: "akt. %@",
@@ -123,7 +129,8 @@ let catalog: [String: Strings] = [
                   detailScanning: "Analyse der Unterhaltungen...",
                   errNotSignedIn: "Claude Code ist nicht angemeldet (einmal starten)",
                   errBadResponse: "Unlesbare API-Antwort",
-                  dayUnit: "T", hourUnit: "h", minuteUnit: "Min")
+                  dayUnit: "T", hourUnit: "h", minuteUnit: "Min",
+                  menuTheme: "Design", themeDark: "Dunkel", themeIvory: "Elfenbein")
 ]
 
 let languageOrder = ["en", "fr", "es", "de"]
@@ -136,6 +143,70 @@ var currentLangCode: String = {
     return catalog[code] != nil ? code : "en"
 }()
 var L: Strings = catalog[currentLangCode] ?? catalog["en"]!
+
+// ---------- themes ----------
+// Two skins for the same widget. Dark is the original; Ivory is built on
+// Anthropic's own palette - Ivory Medium #F0EEE6 is the claude.ai background -
+// so the panel sits on a light desktop instead of punching a hole in it. The
+// gauge colours (orange, amber, red) and the two chart colours are the same in
+// both skins: they carry meaning, not decoration.
+
+func rgb(_ hex: UInt32, _ alpha: CGFloat = 1) -> NSColor {
+    return NSColor(calibratedRed: CGFloat((hex >> 16) & 0xFF) / 255,
+                   green: CGFloat((hex >> 8) & 0xFF) / 255,
+                   blue: CGFloat(hex & 0xFF) / 255,
+                   alpha: alpha)
+}
+
+let claudeOrange = rgb(0xDA7756)
+let colAnswers = rgb(0x6C9FE8)
+
+struct Theme {
+    let name: String
+    let isDark: Bool
+    let panel: NSColor          // gauge panel background
+    let border: NSColor         // its border at rest
+    let ink: NSColor            // window title, peak label
+    let dim: NSColor            // "5h" / "7d" labels, small captions
+    let mid: NSColor            // legends, offline message
+    let bright: NSColor         // reset countdown
+    let track: NSColor          // empty part of a gauge
+    let winBg: NSColor          // usage window body
+    let winBar: NSColor         // the title bar we draw ourselves
+    let winBarLine: NSColor
+    let grid: NSColor
+    let gridBase: NSColor       // the zero line, slightly stronger
+    let axis: NSColor           // day labels
+    let monthLab: NSColor       // month names under the axis
+    let monthRule: NSColor      // vertical line between two months
+    let hoverCol: NSColor       // column behind the hovered day
+}
+
+let themeSkins: [String: Theme] = [
+    "dark": Theme(name: "dark", isDark: true,
+                  panel: rgb(0x1E2029, 0.95), border: rgb(0xFFFFFF, 0.13),
+                  ink: rgb(0xE8EAF2), dim: rgb(0x6C7086), mid: rgb(0x9BA0B5),
+                  bright: rgb(0xB8BCCB), track: rgb(0x2A2D3A),
+                  winBg: rgb(0x1E2029), winBar: rgb(0x191B23), winBarLine: rgb(0xFFFFFF, 0.08),
+                  grid: rgb(0x2A2D3A), gridBase: rgb(0x3A3E52), axis: rgb(0x6C7086),
+                  monthLab: rgb(0x7A7F94), monthRule: rgb(0x343849), hoverCol: rgb(0xFFFFFF, 0.055)),
+    "ivory": Theme(name: "ivory", isDark: false,
+                  panel: rgb(0xF0EEE6, 0.95), border: rgb(0x191919, 0.20),
+                  ink: rgb(0x191919), dim: rgb(0x91918D), mid: rgb(0x6B6A64),
+                  bright: rgb(0x40403E), track: rgb(0xE3DACC),
+                  winBg: rgb(0xFAF9F5), winBar: rgb(0xF0EEE6), winBarLine: rgb(0x191919, 0.10),
+                  grid: rgb(0xE8E5DA), gridBase: rgb(0xCFCCBE), axis: rgb(0x91918D),
+                  monthLab: rgb(0xA9A79F), monthRule: rgb(0xDEDBCE), hoverCol: rgb(0x191919, 0.05))
+]
+
+let themeOrder = ["dark", "ivory"]
+
+// Saved choice first, dark otherwise; the menu changes it live.
+var currentThemeCode: String = {
+    let code = UserDefaults.standard.string(forKey: "theme") ?? "dark"
+    return themeSkins[code] != nil ? code : "dark"
+}()
+var TH: Theme { return themeSkins[currentThemeCode] ?? themeSkins["dark"]! }
 
 // ---------- credentials (login keychain, via /usr/bin/security) ----------
 
@@ -490,7 +561,7 @@ final class GaugeView: NSView {
     func drawBar(x: CGFloat, centerY: CGFloat, width: CGFloat, pct: Double, color: NSColor) {
         let track = NSBezierPath(roundedRect: NSRect(x: x, y: centerY - 2, width: width, height: 4),
                                  xRadius: 2, yRadius: 2)
-        NSColor(calibratedRed: 0.16, green: 0.18, blue: 0.23, alpha: 1).setFill()
+        TH.track.setFill()
         track.fill()
         let w = max(4, width * CGFloat(min(100, max(0, pct))) / 100)
         let fill = NSBezierPath(roundedRect: NSRect(x: x, y: centerY - 2, width: w, height: 4),
@@ -504,13 +575,12 @@ final class GaugeView: NSView {
         let pct = min(100, max(0, value))
         let gray = NSColor(calibratedWhite: 0.55, alpha: 1)
         let color = dim ? gray : gaugeColor(pct)
-        drawText(text(label, 8.5, NSColor(calibratedRed: 0.42, green: 0.44, blue: 0.52, alpha: 1), bold: true),
-                 x: 26, centerY: centerY)
+        drawText(text(label, 8.5, TH.dim, bold: true), x: 26, centerY: centerY)
         drawText(text("\(Int(pct.rounded()))%", 10, color, bold: true), x: 48, centerY: centerY)
         drawBar(x: 84, centerY: centerY, width: 58, pct: pct, color: color)
         let reset = fmtReset(limit.resetsAt)
         if !reset.isEmpty {
-            drawText(text(reset, 9, NSColor(calibratedRed: 0.72, green: 0.74, blue: 0.80, alpha: 1)),
+            drawText(text(reset, 9, TH.bright),
                      x: 0, centerY: centerY, rightAlignedTo: bounds.width - 8)
         }
     }
@@ -518,7 +588,7 @@ final class GaugeView: NSView {
     func drawLogo(cx: CGFloat, cy: CGFloat, size: CGFloat) {
         let lengths: [CGFloat] = [0.50, 0.41, 0.47, 0.42, 0.50, 0.43, 0.46, 0.40, 0.49, 0.42, 0.47, 0.41]
         let half = 7.5 * CGFloat.pi / 180
-        NSColor(calibratedRed: 0.85, green: 0.47, blue: 0.34, alpha: 1).setFill()
+        claudeOrange.setFill()
         for i in 0..<12 {
             let a = CGFloat(i) * 30 * CGFloat.pi / 180
             let r = size * lengths[i]
@@ -537,14 +607,14 @@ final class GaugeView: NSView {
         let veryStale = stale && (app?.lastUpdate.map { Date().timeIntervalSince($0) > 720 } ?? true)
 
         let bg = NSBezierPath(roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5), xRadius: 7, yRadius: 7)
-        NSColor(calibratedRed: 0.12, green: 0.13, blue: 0.16, alpha: 0.95).setFill()
+        TH.panel.setFill()
         bg.fill()
         let update = app?.updateAvailable ?? false
         let borderColor = veryStale
             ? NSColor(calibratedRed: 0.88, green: 0.32, blue: 0.32, alpha: 0.8)
             : (stale ? NSColor(calibratedRed: 0.91, green: 0.64, blue: 0.24, alpha: 0.6)
                      : (update ? NSColor(calibratedRed: 0.85, green: 0.47, blue: 0.34, alpha: 0.8)
-                               : NSColor(calibratedWhite: 1, alpha: 0.13)))
+                               : TH.border))
         borderColor.setStroke()
         bg.lineWidth = 1
         bg.stroke()
@@ -556,8 +626,7 @@ final class GaugeView: NSView {
             drawRow(label: L.short7d, limit: u.sevenDay, centerY: 31, dim: veryStale)
         } else {
             let msg = app?.lastError ?? "…"
-            drawText(text(msg, 9, NSColor(calibratedRed: 0.61, green: 0.63, blue: 0.71, alpha: 1)),
-                     x: 26, centerY: bounds.height / 2)
+            drawText(text(msg, 9, TH.mid), x: 26, centerY: bounds.height / 2)
         }
     }
 }
@@ -692,14 +761,23 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     func showLocalDetail() {
         if let existing = detailWindow { existing.close(); detailWindow = nil }
-        let view = ChartView(frame: NSRect(x: 0, y: 0, width: 584, height: 264))
+        let view = ChartView(frame: NSRect(x: 0, y: 0, width: 584, height: 316))
         view.app = self
+        // fullSizeContentView plus a transparent titlebar: the window keeps its
+        // native rounded frame and traffic lights, but the grey strip is gone
+        // and the view paints the header itself, in the current theme.
         let win = NSWindow(contentRect: view.frame,
-                           styleMask: [.titled, .closable], backing: .buffered, defer: false)
+                           styleMask: [.titled, .closable, .fullSizeContentView],
+                           backing: .buffered, defer: false)
         win.title = L.detailTitle
+        win.titleVisibility = .hidden
+        win.titlebarAppearsTransparent = true
+        win.isMovableByWindowBackground = true
+        win.appearance = NSAppearance(named: TH.isDark ? NSAppearance.Name.darkAqua
+                                                        : NSAppearance.Name.aqua)
         win.isReleasedWhenClosed = false
         win.level = .floating
-        win.backgroundColor = NSColor(calibratedRed: 0.12, green: 0.13, blue: 0.16, alpha: 1)
+        win.backgroundColor = TH.winBg
         win.contentView = view
         var origin = NSPoint(x: window.frame.minX, y: window.frame.maxY + 12)
         if let screen = NSScreen.main {
@@ -826,6 +904,19 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         opacityItem.submenu = opacityMenu
         menu.addItem(opacityItem)
 
+        let themeItem = NSMenuItem(title: L.menuTheme, action: nil, keyEquivalent: "")
+        let themeMenu = NSMenu()
+        for code in themeOrder {
+            let item = NSMenuItem(title: code == "ivory" ? L.themeIvory : L.themeDark,
+                                  action: #selector(onSelectTheme), keyEquivalent: "")
+            item.target = self
+            item.representedObject = code
+            item.state = (code == currentThemeCode) ? .on : .off
+            themeMenu.addItem(item)
+        }
+        themeItem.submenu = themeMenu
+        menu.addItem(themeItem)
+
         let langItem = NSMenuItem(title: L.menuLanguage, action: nil, keyEquivalent: "")
         let langMenu = NSMenu()
         for code in languageOrder {
@@ -909,7 +1000,19 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         gauge.needsDisplay = true
     }
 
-    @objc func onRefresh() { refresh() }
+    // Refresh pulls the usage figures and, in the same click, asks the
+    // repository whether a newer version is out - otherwise the update entry
+    // only appears on the six-hourly timer.
+    @objc func onRefresh() { refresh(); checkUpdate() }
+
+    @objc func onSelectTheme(_ sender: NSMenuItem) {
+        guard let code = sender.representedObject as? String, code != currentThemeCode else { return }
+        currentThemeCode = code
+        UserDefaults.standard.set(code, forKey: "theme")
+        gauge.needsDisplay = true
+        // the usage window carries the skin in its own frame, so reopen it
+        if detailWindow != nil { showLocalDetail() }
+    }
 
     // web-install.sh downloads the repository, rebuilds from source, kills
     // this instance and starts the new one. The shell survives us dying.
@@ -944,10 +1047,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
 
 // ---------- local usage chart ----------
-// The same chart as the Windows widget: stacked daily areas of new tokens
-// (cache writes below, prompts + answers on top) over the current and
-// previous month, with month markers, a peak label, a caption line and a
-// hover readout.
+// The same chart as the Windows widget: one stacked bar per day of new tokens
+// (cache writes at the bottom, prompts + answers on top) over the current and
+// previous month, the two month totals and the weekly percentage on top, month
+// names under the axis, and a footer that follows the mouse.
+//
+// The window uses fullSizeContentView with a transparent titlebar, so this
+// view paints its own header behind the traffic lights instead of sitting
+// under a grey system strip.
 
 final class ChartView: NSView {
     weak var app: AppDelegate?
@@ -963,17 +1070,22 @@ final class ChartView: NSView {
                                        owner: self, userInfo: nil))
     }
 
-    let chartX: CGFloat = 12, chartY: CGFloat = 26
-    let cw: CGFloat = 560, ch: CGFloat = 200
-    let ml: CGFloat = 38, mr: CGFloat = 10, mt: CGFloat = 12, mb: CGFloat = 20
+    let barH: CGFloat = 34                                  // our own title bar
+    let chartX: CGFloat = 12, chartY: CGFloat = 88
+    let cw: CGFloat = 560, ch: CGFloat = 190
+    let mL: CGFloat = 40, mR: CGFloat = 6, mT: CGFloat = 12, mB: CGFloat = 36
+
+    func slotWidth(_ n: Int) -> CGFloat { return (cw - mL - mR) / CGFloat(n) }
 
     override func mouseMoved(with event: NSEvent) {
         guard let data = app?.localData, data.writes.count >= 2 else { return }
         let p = convert(event.locationInWindow, from: nil)
         let n = data.writes.count
-        let plotW = cw - ml - mr
-        let i = Int(((p.x - chartX - ml) / (plotW / CGFloat(n - 1))).rounded())
-        let newIndex: Int? = (i >= 0 && i < n) ? i : nil
+        var newIndex: Int? = nil
+        if p.y >= chartY && p.y <= chartY + ch - mB {
+            let i = Int((p.x - chartX - mL) / slotWidth(n))
+            if i >= 0 && i < n { newIndex = i }
+        }
         if newIndex != hoverIndex { hoverIndex = newIndex; needsDisplay = true }
     }
 
@@ -981,10 +1093,18 @@ final class ChartView: NSView {
         if hoverIndex != nil { hoverIndex = nil; needsDisplay = true }
     }
 
+    override func cancelOperation(_ sender: Any?) { window?.close() }
+
     func chartLocale() -> Locale { return Locale(identifier: currentLangCode) }
 
     func mt(_ tokens: Int64) -> String {
         return String(format: "%.1f M", locale: chartLocale(), Double(tokens) / 1e6)
+    }
+
+    func measure(_ str: String, _ size: CGFloat, bold: Bool = false) -> CGFloat {
+        let font = bold ? NSFont.monospacedDigitSystemFont(ofSize: size, weight: .semibold)
+                        : NSFont.monospacedDigitSystemFont(ofSize: size, weight: .regular)
+        return NSAttributedString(string: str, attributes: [.font: font]).size().width
     }
 
     func put(_ str: String, _ size: CGFloat, _ color: NSColor, x: CGFloat, y: CGFloat,
@@ -999,35 +1119,59 @@ final class ChartView: NSView {
         a.draw(at: NSPoint(x: px, y: y - sz.height / 2))
     }
 
+    // the twelve-spoke Claude mark, same lengths as the gauge panel
+    func drawLogo(cx: CGFloat, cy: CGFloat, size: CGFloat) {
+        let lengths: [CGFloat] = [0.50, 0.41, 0.47, 0.42, 0.50, 0.43, 0.46, 0.40, 0.49, 0.42, 0.47, 0.41]
+        let half = 7.5 * CGFloat.pi / 180
+        claudeOrange.setFill()
+        for i in 0..<12 {
+            let a = CGFloat(i) * 30 * CGFloat.pi / 180
+            let r = size * lengths[i]
+            let path = NSBezierPath()
+            path.move(to: NSPoint(x: cx, y: cy))
+            path.line(to: NSPoint(x: cx + r * cos(a - half), y: cy + r * sin(a - half)))
+            path.line(to: NSPoint(x: cx + r * cos(a + half), y: cy + r * sin(a + half)))
+            path.close()
+            path.fill()
+        }
+    }
+
+    // one figure of the summary row, returns the width it took
+    func drawKpi(caption: String, value: String, color: NSColor, x: CGFloat) -> CGFloat {
+        let th = TH
+        put(caption.uppercased(with: chartLocale()), 8.5, th.dim, x: x, y: 52)
+        put(value, 16, color, x: x, y: 72, bold: true)
+        return max(measure(caption.uppercased(with: chartLocale()), 8.5), measure(value, 16, bold: true))
+    }
+
     override func draw(_ dirtyRect: NSRect) {
-        NSColor(calibratedRed: 0.12, green: 0.13, blue: 0.16, alpha: 1).setFill()
+        let th = TH
+        th.winBg.setFill()
         bounds.fill()
 
-        let gray = NSColor(calibratedRed: 0.61, green: 0.63, blue: 0.71, alpha: 1)
-        let muted = NSColor(calibratedRed: 0.42, green: 0.44, blue: 0.52, alpha: 1)
-        let ink = NSColor(calibratedRed: 0.91, green: 0.92, blue: 0.95, alpha: 1)
-        let colWrites = NSColor(calibratedRed: 0.85, green: 0.47, blue: 0.34, alpha: 1)
-        let colAnswers = NSColor(calibratedRed: 0.42, green: 0.62, blue: 0.91, alpha: 1)
+        // ---- our own title bar, drawn behind the traffic lights
+        th.winBar.setFill()
+        NSRect(x: 0, y: 0, width: bounds.width, height: barH).fill()
+        th.winBarLine.setFill()
+        NSRect(x: 0, y: barH - 1, width: bounds.width, height: 1).fill()
+        drawLogo(cx: 88, cy: barH / 2, size: 13)
+        put(L.detailTitle, 11.5, th.ink, x: 100, y: barH / 2, bold: true)
 
-        // legend + week percentage
-        var lx: CGFloat = 14
-        for (color, label) in [(colWrites, L.detailWrites), (colAnswers, L.detailAnswers)] {
+        // ---- legend, top right
+        var ly: CGFloat = 50
+        for (color, label) in [(claudeOrange, L.detailWrites), (colAnswers, L.detailAnswers)] {
+            let labelWidth = measure(label, 9.5)
+            put(label, 9.5, th.mid, x: bounds.width - 14, y: ly, rightAligned: true)
             color.setFill()
-            NSBezierPath(roundedRect: NSRect(x: lx, y: 8, width: 9, height: 9), xRadius: 2, yRadius: 2).fill()
-            put(label, 10, gray, x: lx + 14, y: 13)
-            let labelWidth = NSAttributedString(string: label,
-                attributes: [.font: NSFont.monospacedDigitSystemFont(ofSize: 10, weight: .regular)]).size().width
-            lx += 14 + labelWidth + 18
-        }
-        if let seven = app?.usage?.sevenDay?.utilization {
-            put("\(L.week): \(Int(seven.rounded()))%", 10, gaugeColor(seven), x: bounds.width - 14, y: 13,
-                bold: true, rightAligned: true)
+            NSBezierPath(roundedRect: NSRect(x: bounds.width - 14 - labelWidth - 13, y: ly - 4,
+                                             width: 8, height: 8), xRadius: 2, yRadius: 2).fill()
+            ly += 16
         }
 
         guard let data = app?.localData, data.writes.count >= 2 else {
             var msg = L.detailScanning
             if let a = app, a.scanTotal > 0 { msg += "  \(a.scanDone)/\(a.scanTotal)" }
-            put(msg, 11, gray, x: chartX + ml, y: chartY + ch / 2)
+            put(msg, 11, th.mid, x: chartX + mL, y: chartY + ch / 2)
             return
         }
 
@@ -1043,101 +1187,129 @@ final class ChartView: NSView {
         for candidate in steps where 3 * candidate * 1e6 >= Double(maxTot) { stepM = candidate; break }
         let ymax = 3 * stepM * 1e6
 
-        let plotW = cw - ml - mr, plotH = ch - mt - mb
-        func X(_ i: Int) -> CGFloat { return chartX + ml + plotW * CGFloat(i) / CGFloat(n - 1) }
-        func Y(_ v: Double) -> CGFloat { return chartY + mt + plotH * CGFloat(1 - v / ymax) }
+        let cal = Calendar.current
+        let plotH = ch - mT - mB
+        let slot = slotWidth(n)
+        let barW = max(2, min(6, slot - 2.4))
+        let pad = (slot - barW) / 2
+        func X(_ i: Int) -> CGFloat { return chartX + mL + slot * CGFloat(i) + pad }
+        func Y(_ v: Double) -> CGFloat { return chartY + mT + plotH * CGFloat(1 - v / ymax) }
 
-        // grid
+        // ---- summary row: this month, the previous one, the weekly percentage
+        let monthFmt = DateFormatter(); monthFmt.locale = chartLocale(); monthFmt.dateFormat = "MMMM"
+        let thisMonth = cal.component(.month, from: Date())
+        var cur: Int64 = 0, prev: Int64 = 0
+        for i in 0..<n {
+            if let date = cal.date(byAdding: .day, value: i, to: data.start),
+               cal.component(.month, from: date) == thisMonth { cur += tot[i] } else { prev += tot[i] }
+        }
+        var kx: CGFloat = 16
+        kx += drawKpi(caption: monthFmt.string(from: Date()), value: mt(cur), color: th.ink, x: kx) + 22
+        kx += drawKpi(caption: monthFmt.string(from: data.start), value: mt(prev), color: th.ink, x: kx) + 22
+        if let seven = app?.usage?.sevenDay?.utilization {
+            _ = drawKpi(caption: L.week, value: "\(Int(seven.rounded()))%",
+                        color: gaugeColor(seven), x: kx)
+        }
+
+        // ---- grid
         for g in 0...3 {
             let gy = Y(Double(g) * stepM * 1e6)
             let line = NSBezierPath()
-            line.move(to: NSPoint(x: chartX + ml, y: gy))
-            line.line(to: NSPoint(x: chartX + cw - mr, y: gy))
-            (g == 0 ? NSColor(calibratedRed: 0.23, green: 0.24, blue: 0.32, alpha: 1)
-                    : NSColor(calibratedRed: 0.16, green: 0.18, blue: 0.23, alpha: 1)).setStroke()
+            line.move(to: NSPoint(x: chartX + mL, y: gy))
+            line.line(to: NSPoint(x: chartX + cw - mR, y: gy))
+            (g == 0 ? th.gridBase : th.grid).setStroke()
             line.lineWidth = 1
             line.stroke()
-            if g > 0 { put("\(Int(stepM) * g)M", 9, muted, x: chartX + ml - 6, y: gy, rightAligned: true) }
+            if g > 0 { put("\(Int(stepM) * g) M", 9, th.axis, x: chartX + mL - 7, y: gy, rightAligned: true) }
         }
 
-        // month markers and x labels
+        // ---- the hovered day, as a faint full-height column
+        if let i = hoverIndex, i < n {
+            th.hoverCol.setFill()
+            NSRect(x: chartX + mL + slot * CGFloat(i), y: chartY + mT - 4,
+                   width: slot, height: plotH + 4).fill()
+        }
+
+        // ---- one stacked bar per day
+        for i in 0..<n where tot[i] > 0 {
+            let yTot = Y(Double(tot[i])), yCache = Y(Double(data.writes[i])), y0 = Y(0)
+            if data.answers[i] > 0 {
+                colAnswers.setFill()
+                NSBezierPath(roundedRect: NSRect(x: X(i), y: yTot, width: barW,
+                                                 height: max(1, yCache - yTot + 1.6)),
+                             xRadius: 1.6, yRadius: 1.6).fill()
+            }
+            if data.writes[i] > 0 {
+                claudeOrange.setFill()
+                NSBezierPath(roundedRect: NSRect(x: X(i), y: yCache, width: barW,
+                                                 height: max(1, y0 - yCache)),
+                             xRadius: 1.6, yRadius: 1.6).fill()
+            }
+        }
+
+        // ---- peak label
+        var peak = 0
+        for i in 1..<n where tot[i] > tot[peak] { peak = i }
+        if tot[peak] > 0 {
+            put(mt(tot[peak]), 9.5, th.ink,
+                x: max(chartX + mL + 20, min(X(peak) + barW / 2, chartX + cw - 30)),
+                y: max(chartY + 6, Y(Double(tot[peak])) - 10), bold: true, centered: true)
+        }
+
+        // ---- month rules, month names, day labels
         let dayFmt = DateFormatter(); dayFmt.locale = chartLocale(); dayFmt.dateFormat = "d MMM"
-        let cal = Calendar.current
+        var runStart = 0
+        for i in 1...n {
+            var edge = i == n
+            if i < n, let date = cal.date(byAdding: .day, value: i, to: data.start) {
+                edge = cal.component(.day, from: date) == 1
+            }
+            guard edge else { continue }
+            if i < n {
+                let line = NSBezierPath()
+                line.move(to: NSPoint(x: chartX + mL + slot * CGFloat(i), y: chartY + mT - 4))
+                line.line(to: NSPoint(x: chartX + mL + slot * CGFloat(i), y: chartY + mT + plotH))
+                th.monthRule.setStroke()
+                line.lineWidth = 1
+                line.stroke()
+            }
+            if let date = cal.date(byAdding: .day, value: runStart, to: data.start) {
+                put(monthFmt.string(from: date).uppercased(with: chartLocale()), 8.5, th.monthLab,
+                    x: chartX + mL + slot * CGFloat(runStart + i) / 2, y: chartY + mT + plotH + 30,
+                    centered: true)
+            }
+            runStart = i
+        }
         var lastLabelX: CGFloat = -100
         for i in 0..<n {
             guard let date = cal.date(byAdding: .day, value: i, to: data.start) else { continue }
             let day = cal.component(.day, from: date)
-            if day == 1, i > 0 {
-                let line = NSBezierPath()
-                line.move(to: NSPoint(x: X(i), y: chartY + mt))
-                line.line(to: NSPoint(x: X(i), y: chartY + ch - mb))
-                NSColor(calibratedRed: 0.29, green: 0.31, blue: 0.39, alpha: 1).setStroke()
-                line.setLineDash([3, 4], count: 2, phase: 0)
-                line.lineWidth = 1
-                line.stroke()
-            }
-            if day == 1 || day == 15 || i == n - 1 {
-                let labelX = X(i)
-                if labelX - lastLabelX >= 34 {
-                    put(dayFmt.string(from: date), 9, muted,
-                        x: min(labelX, chartX + cw - 30), y: chartY + ch - mb + 10, centered: true)
-                    lastLabelX = labelX
-                }
-            }
+            guard day == 1 || day == 15 || i == n - 1 else { continue }
+            let labelX = X(i) + barW / 2
+            guard labelX - lastLabelX >= 40 else { continue }
+            put(dayFmt.string(from: date), 9, th.axis,
+                x: min(labelX, chartX + cw - 30), y: chartY + mT + plotH + 14, centered: true)
+            lastLabelX = labelX
         }
 
-        // stacked areas: writes below, answers on top
-        let writesPath = NSBezierPath()
-        writesPath.move(to: NSPoint(x: X(0), y: Y(Double(data.writes[0]))))
-        for i in 1..<n { writesPath.line(to: NSPoint(x: X(i), y: Y(Double(data.writes[i])))) }
-        for i in stride(from: n - 1, through: 0, by: -1) { writesPath.line(to: NSPoint(x: X(i), y: Y(0))) }
-        writesPath.close()
-        let answersPath = NSBezierPath()
-        answersPath.move(to: NSPoint(x: X(0), y: Y(Double(tot[0]))))
-        for i in 1..<n { answersPath.line(to: NSPoint(x: X(i), y: Y(Double(tot[i])))) }
-        for i in stride(from: n - 1, through: 0, by: -1) { answersPath.line(to: NSPoint(x: X(i), y: Y(Double(data.writes[i])))) }
-        answersPath.close()
-        colAnswers.setFill(); answersPath.fill()
-        colWrites.setFill(); writesPath.fill()
-        let seam = NSBezierPath()
-        seam.move(to: NSPoint(x: X(0), y: Y(Double(data.writes[0]))))
-        for i in 1..<n { seam.line(to: NSPoint(x: X(i), y: Y(Double(data.writes[i])))) }
-        NSColor(calibratedRed: 0.12, green: 0.13, blue: 0.16, alpha: 1).setStroke()
-        seam.lineWidth = 1.2
-        seam.stroke()
-
-        // peak label
-        var peak = 0
-        for i in 1..<n where tot[i] > tot[peak] { peak = i }
-        if tot[peak] > 0 {
-            put(mt(tot[peak]), 9.5, ink,
-                x: max(chartX + ml + 16, min(X(peak), chartX + cw - 30)),
-                y: max(chartY + 6, Y(Double(tot[peak])) - 10), bold: true, centered: true)
-        }
-
-        // caption: hover readout, or the month totals + refresh time
-        let monthFmt = DateFormatter(); monthFmt.locale = chartLocale(); monthFmt.dateFormat = "MMMM"
+        // ---- footer: the hovered day, or today when the mouse is elsewhere
         let hoverFmt = DateFormatter(); hoverFmt.locale = chartLocale(); hoverFmt.dateFormat = "EEE d MMM"
-        var caption = ""
-        if let i = hoverIndex, i < n, let date = cal.date(byAdding: .day, value: i, to: data.start) {
-            caption = hoverFmt.string(from: date) + ": " + mt(tot[i])
-                + "  (" + L.detailWrites + " " + mt(data.writes[i])
-                + " · " + L.detailAnswers + " " + mt(data.answers[i]) + ")"
-        } else {
-            let thisMonth = cal.component(.month, from: Date())
-            var cur: Int64 = 0, prev: Int64 = 0
-            for i in 0..<n {
-                if let date = cal.date(byAdding: .day, value: i, to: data.start),
-                   cal.component(.month, from: date) == thisMonth { cur += tot[i] } else { prev += tot[i] }
-            }
-            caption = monthFmt.string(from: Date()) + ": " + mt(cur)
-                + "   ·   " + monthFmt.string(from: data.start) + ": " + mt(prev)
-            if let ts = app?.localDataTs {
-                let f = DateFormatter(); f.dateFormat = "HH:mm"
-                caption += "   ·   " + String(format: L.updated, f.string(from: ts))
-            }
+        let day = min(max(0, hoverIndex ?? (n - 1)), n - 1)
+        let fy = bounds.height - 16
+        var fx: CGFloat = 16
+        if let date = cal.date(byAdding: .day, value: day, to: data.start) {
+            let label = hoverFmt.string(from: date)
+            put(label, 10, th.ink, x: fx, y: fy, bold: true)
+            fx += measure(label, 10, bold: true) + 9
         }
-        put(caption, 10.5, gray, x: 14, y: bounds.height - 14)
+        put(mt(tot[day]), 10, claudeOrange, x: fx, y: fy, bold: true)
+        fx += measure(mt(tot[day]), 10, bold: true) + 9
+        put(L.detailWrites + " " + mt(data.writes[day]) + "   ·   "
+            + L.detailAnswers + " " + mt(data.answers[day]), 10, th.mid, x: fx, y: fy)
+        if let ts = app?.localDataTs {
+            let f = DateFormatter(); f.dateFormat = "HH:mm"
+            put(String(format: L.updated, f.string(from: ts)), 10, th.mid,
+                x: bounds.width - 16, y: fy, rightAligned: true)
+        }
     }
 }
-

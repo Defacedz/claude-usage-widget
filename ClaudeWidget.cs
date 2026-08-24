@@ -61,6 +61,80 @@ namespace ClaudeWidgetApp
         // initializers, so a plain bool absent from an older config file would
         // read back as false - the opposite of the intended default.
         [DataMember] public bool? HideFullScreen;
+        // "dark" (the original) or "ivory". Same reason it is a string rather
+        // than an enum: a config file written by an older build has no value
+        // at all, and Theme.Use() maps anything unknown back to dark.
+        [DataMember] public string Theme;
+    }
+
+    // ---------- themes ----------
+    // Two skins for the same widget. Dark is the original; Ivory is built on
+    // Anthropic's own palette - Ivory Medium #F0EEE6 is the claude.ai
+    // background - so the widget sits on a light Windows taskbar instead of
+    // punching a black hole in it. The three gauge colours (orange, amber,
+    // red) and the two chart colours are deliberately identical in both skins:
+    // they carry meaning, not decoration.
+    public class Theme
+    {
+        public string Name;
+
+        public string Panel;        // widget and menu background
+        public string Border;       // widget border at rest
+        public string MenuBorder;
+        public string Ink;          // menu text, window title
+        public string Dim;          // "5h" / "7d" labels, disabled menu items
+        public string Mid;          // loading and offline message, legends
+        public string Bright;       // reset countdown
+        public string Track;        // empty part of a gauge
+        public string Sep;          // menu separator
+        public string Highlight;    // hovered menu row
+
+        public string WinBg;        // usage window body
+        public string WinBorder;
+        public string WinBar;       // the title bar we draw ourselves
+        public string WinBarLine;
+        public string WinBtn;       // close button at rest
+        public string Grid;         // chart gridlines
+        public string GridBase;     // the zero line, slightly stronger
+        public string Axis;         // day labels
+        public string MonthLab;     // month names under the axis
+        public string MonthRule;    // vertical line between two months
+        public string HoverCol;     // column behind the hovered day
+
+        public static readonly Theme Dark = new Theme
+        {
+            Name = "dark",
+            Panel = "#F21E2029", Border = "#22FFFFFF", MenuBorder = "#33FFFFFF",
+            Ink = "#E8EAF2", Dim = "#6C7086", Mid = "#9BA0B5", Bright = "#B8BCCB",
+            Track = "#2A2D3A", Sep = "#26FFFFFF", Highlight = "#2EDA7756",
+            WinBg = "#1E2029", WinBorder = "#1FFFFFFF",
+            WinBar = "#191B23", WinBarLine = "#14FFFFFF", WinBtn = "#0FFFFFFF",
+            Grid = "#2A2D3A", GridBase = "#3A3E52", Axis = "#6C7086",
+            MonthLab = "#7A7F94", MonthRule = "#343849", HoverCol = "#0EFFFFFF"
+        };
+
+        public static readonly Theme Ivory = new Theme
+        {
+            Name = "ivory",
+            Panel = "#F2F0EEE6", Border = "#33191919", MenuBorder = "#33191919",
+            Ink = "#191919", Dim = "#91918D", Mid = "#6B6A64", Bright = "#40403E",
+            Track = "#E3DACC", Sep = "#26191919", Highlight = "#30DA7756",
+            WinBg = "#FAF9F5", WinBorder = "#26191919",
+            WinBar = "#F0EEE6", WinBarLine = "#1A191919", WinBtn = "#10191919",
+            Grid = "#E8E5DA", GridBase = "#CFCCBE", Axis = "#91918D",
+            MonthLab = "#A9A79F", MonthRule = "#DEDBCE", HoverCol = "#0D191919"
+        };
+
+        public static readonly Theme[] All = { Dark, Ivory };
+        public static Theme Current = Dark;
+
+        // Unknown or missing name falls back to the original dark skin.
+        public static void Use(string name)
+        {
+            foreach (Theme t in All)
+                if (t.Name == name) { Current = t; return; }
+            Current = Dark;
+        }
     }
 
     // ---------- localization ----------
@@ -86,6 +160,8 @@ namespace ClaudeWidgetApp
         public string MenuRefresh, MenuMoveBottomLeft, MenuOpacity,
                       MenuStartWithWindows, MenuHideFullScreen, MenuOpenLog,
                       MenuRestart, MenuLanguage, MenuQuit;
+
+        public string MenuTheme, ThemeDark, ThemeIvory;   // appearance submenu
 
         public string MenuUpdate;       // shown in orange when the repository is ahead
         public string MenuLocalDetail;  // context-menu entry for the local-usage window
@@ -135,6 +211,7 @@ namespace ClaudeWidgetApp
                 MenuOpenLog = "Open log",
                 MenuRestart = "Restart widget",
                 MenuLanguage = "Language",
+                MenuTheme = "Theme", ThemeDark = "Dark", ThemeIvory = "Ivory",
                 MenuQuit = "Quit",
                 MenuUpdate = "Update available",
                 MenuLocalDetail = "Local usage details",
@@ -174,6 +251,7 @@ namespace ClaudeWidgetApp
                 MenuOpenLog = "Ouvrir le journal",
                 MenuRestart = "Redémarrer le widget",
                 MenuLanguage = "Langue",
+                MenuTheme = "Thème", ThemeDark = "Sombre", ThemeIvory = "Ivoire",
                 MenuQuit = "Quitter",
                 MenuUpdate = "Mise à jour disponible",
                 MenuLocalDetail = "Détail conso locale",
@@ -213,6 +291,7 @@ namespace ClaudeWidgetApp
                 MenuOpenLog = "Abrir el registro",
                 MenuRestart = "Reiniciar el widget",
                 MenuLanguage = "Idioma",
+                MenuTheme = "Tema", ThemeDark = "Oscuro", ThemeIvory = "Marfil",
                 MenuQuit = "Salir",
                 MenuUpdate = "Actualización disponible",
                 MenuLocalDetail = "Detalle de uso local",
@@ -252,6 +331,7 @@ namespace ClaudeWidgetApp
                 MenuOpenLog = "Protokoll öffnen",
                 MenuRestart = "Widget neu starten",
                 MenuLanguage = "Sprache",
+                MenuTheme = "Design", ThemeDark = "Dunkel", ThemeIvory = "Elfenbein",
                 MenuQuit = "Beenden",
                 MenuUpdate = "Update verfügbar",
                 MenuLocalDetail = "Lokale Nutzungsdetails",
@@ -298,7 +378,7 @@ namespace ClaudeWidgetApp
     {
         // Bump this when publishing: the update check compares it against the
         // same line in the repository's ClaudeWidget.cs.
-        public const string Version = "2026.08.25";
+        public const string Version = "2026.08.27";
         const string SourceUrl = "https://raw.githubusercontent.com/Defacedz/claude-usage-widget/main/ClaudeWidget.cs";
         public const string WebInstall = "https://raw.githubusercontent.com/Defacedz/claude-usage-widget/main/web-install.ps1";
 
@@ -778,13 +858,15 @@ namespace ClaudeWidgetApp
             // null to English, and we write the resolved code back.
             I18n.Use(_cfg.Lang);
             _cfg.Lang = L.Code;
+            Theme.Use(_cfg.Theme);
+            _cfg.Theme = Theme.Current.Name;
             Opacity = (_cfg.Opacity >= 0.2 && _cfg.Opacity <= 1.0) ? _cfg.Opacity : 1.0;
 
             _root = new Border
             {
                 CornerRadius = new CornerRadius(7),
-                Background = B("#F21E2029"),
-                BorderBrush = B("#22FFFFFF"),
+                Background = B(Theme.Current.Panel),
+                BorderBrush = B(Theme.Current.Border),
                 BorderThickness = new Thickness(1),
                 Padding = new Thickness(8, 3, 8, 3)
             };
@@ -984,7 +1066,7 @@ namespace ClaudeWidgetApp
             {
                 Width = w, Height = h,
                 CornerRadius = new CornerRadius(h / 2),
-                Background = B("#2A2D3A"),
+                Background = B(Theme.Current.Track),
                 VerticalAlignment = VerticalAlignment.Center
             };
             var fill = new Border
@@ -1019,7 +1101,7 @@ namespace ClaudeWidgetApp
         {
             _rows.Children.Clear();
             _rows.Opacity = 1.0;
-            _root.BorderBrush = B("#22FFFFFF");
+            _root.BorderBrush = B(Theme.Current.Border);
             // A Grid centres the text properly; a bare TextBlock in a
             // StackPanel would sit at the top of the 36px band.
             var row = new Grid { Height = 36 };
@@ -1027,7 +1109,7 @@ namespace ClaudeWidgetApp
             {
                 Text = msg,
                 FontSize = 10,
-                Foreground = B("#9BA0B5"),
+                Foreground = B(Theme.Current.Mid),
                 VerticalAlignment = VerticalAlignment.Center
             });
             _rows.Children.Add(row);
@@ -1047,7 +1129,7 @@ namespace ClaudeWidgetApp
             {
                 Text = shortLabel,
                 FontSize = 8.5,
-                Foreground = B("#6C7086"),
+                Foreground = B(Theme.Current.Dim),
                 VerticalAlignment = VerticalAlignment.Center
             };
             Grid.SetColumn(label, 0);
@@ -1076,7 +1158,7 @@ namespace ClaudeWidgetApp
                 {
                     Text = reset,
                     FontSize = 9,
-                    Foreground = B("#B8BCCB"),
+                    Foreground = B(Theme.Current.Bright),
                     TextAlignment = TextAlignment.Right,
                     VerticalAlignment = VerticalAlignment.Center
                 };
@@ -1125,7 +1207,7 @@ namespace ClaudeWidgetApp
             {
                 // Data freshness owns the border when something is wrong;
                 // otherwise an available update paints it Claude-orange.
-                _root.BorderBrush = B(_updateAvailable ? "#CCDA7756" : "#22FFFFFF");
+                _root.BorderBrush = B(_updateAvailable ? "#CCDA7756" : Theme.Current.Border);
                 _rows.Opacity = 1.0;
             }
             if (_updateAvailable) tips.Add(L.MenuUpdate);
@@ -1265,10 +1347,10 @@ namespace ClaudeWidgetApp
 
         static StackPanel LegendChip(string hex, string label)
         {
-            var sp = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 14, 0) };
+            var sp = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 3) };
             sp.Children.Add(new Border
             {
-                Width = 9, Height = 9,
+                Width = 8, Height = 8,
                 CornerRadius = new CornerRadius(2),
                 Background = B(hex),
                 VerticalAlignment = VerticalAlignment.Center,
@@ -1276,217 +1358,406 @@ namespace ClaudeWidgetApp
             });
             sp.Children.Add(new TextBlock
             {
-                Text = label, FontSize = 10, Foreground = B("#9BA0B5"),
+                Text = label, FontSize = 9.5, Foreground = B(Theme.Current.Mid),
                 VerticalAlignment = VerticalAlignment.Center
             });
             return sp;
         }
 
+        // One figure of the summary row: a small caption over a large number.
+        // The number itself is filled in by the render pass.
+        static StackPanel Kpi(string caption, TextBlock value)
+        {
+            var sp = new StackPanel { Margin = new Thickness(0, 0, 22, 0) };
+            sp.Children.Add(new TextBlock
+            {
+                Text = caption.ToUpper(Ci()),
+                FontSize = 8.5,
+                Foreground = B(Theme.Current.Dim)
+            });
+            sp.Children.Add(value);
+            return sp;
+        }
+
+        static TextBlock KpiValue(string hex)
+        {
+            return new TextBlock
+            {
+                Text = "-", FontSize = 16, FontWeight = FontWeights.SemiBold,
+                Foreground = B(hex)
+            };
+        }
+
         void ShowLocalDetail()
         {
             if (_detail != null) { try { _detail.Close(); } catch { } _detail = null; }
+            Theme th = Theme.Current;
 
             // Current month plus the whole previous month.
             DateTime today = DateTime.Today;
             DateTime start = new DateTime(today.Year, today.Month, 1).AddMonths(-1);
 
-            const double CW = 560, CH = 200, ML = 38, MR = 10, MT = 12, MB = 20;
+            const double CW = 560, CH = 204, ML = 40, MR = 6, MT = 16, MB = 36;
             double plotW = CW - ML - MR, plotH = CH - MT - MB;
             const string ColWrites = "#DA7756", ColAnswers = "#6C9FE8";
 
-            var panel = new StackPanel { Margin = new Thickness(12, 8, 12, 10) };
+            // ---- title bar. WindowStyle.None means we draw it ourselves, so
+            // the window matches the widget instead of wearing the grey system
+            // chrome. It carries the logo, the title and the close button, and
+            // dragging it moves the window.
+            var bar = new Border
+            {
+                Background = B(th.WinBar),
+                CornerRadius = new CornerRadius(9, 9, 0, 0),
+                BorderBrush = B(th.WinBarLine),
+                BorderThickness = new Thickness(0, 0, 0, 1),
+                Padding = new Thickness(11, 6, 7, 6)
+            };
+            var barGrid = new Grid();
+            barGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            barGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            barGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
-            var head = new Grid { Margin = new Thickness(2, 0, 2, 6) };
-            head.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-            head.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-            var legend = new StackPanel { Orientation = Orientation.Horizontal };
-            legend.Children.Add(LegendChip(ColWrites, L.DetailWrites));
-            legend.Children.Add(LegendChip(ColAnswers, L.DetailAnswers));
-            Grid.SetColumn(legend, 0);
-            head.Children.Add(legend);
+            var mark = new ContentControl
+            {
+                Content = ClaudeLogo(13),
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(0, 0, 8, 0)
+            };
+            Grid.SetColumn(mark, 0);
+            barGrid.Children.Add(mark);
+
+            var title = new TextBlock
+            {
+                Text = L.DetailTitle,
+                FontSize = 11.5,
+                FontWeight = FontWeights.SemiBold,
+                Foreground = B(th.Ink),
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            Grid.SetColumn(title, 1);
+            barGrid.Children.Add(title);
+
+            var closeBtn = new Border
+            {
+                Width = 20, Height = 20,
+                CornerRadius = new CornerRadius(4),
+                Background = B(th.WinBtn),
+                Cursor = Cursors.Hand
+            };
+            closeBtn.Child = new TextBlock
+            {
+                Text = "✕", FontSize = 11,
+                Foreground = B(th.Mid),
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            Grid.SetColumn(closeBtn, 2);
+            barGrid.Children.Add(closeBtn);
+            bar.Child = barGrid;
+
+            // ---- summary row: the three figures people open the window for.
+            var kMonth = KpiValue(th.Ink);
+            var kPrev = KpiValue(th.Ink);
+            var kWeek = KpiValue(ColWrites);
+
+            var kpis = new Grid { Margin = new Thickness(2, 0, 2, 10) };
+            kpis.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            kpis.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            kpis.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            kpis.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+
+            var kA = Kpi(today.ToString("MMMM", Ci()), kMonth);
+            Grid.SetColumn(kA, 0); kpis.Children.Add(kA);
+            var kB = Kpi(start.ToString("MMMM", Ci()), kPrev);
+            Grid.SetColumn(kB, 1); kpis.Children.Add(kB);
+
             double weekPct = (_last != null && _last.seven_day != null && _last.seven_day.utilization.HasValue)
                 ? _last.seven_day.utilization.Value : -1;
             if (weekPct >= 0)
             {
-                var wk = new TextBlock
-                {
-                    Text = L.Week + L.Colon + (int)Math.Round(weekPct) + "%",
-                    FontSize = 10,
-                    FontWeight = FontWeights.SemiBold,
-                    Foreground = B(PctHex(weekPct)),
-                    VerticalAlignment = VerticalAlignment.Center
-                };
-                Grid.SetColumn(wk, 1);
-                head.Children.Add(wk);
+                kWeek.Text = (int)Math.Round(weekPct) + "%";
+                kWeek.Foreground = B(PctHex(weekPct));
+                var kC = Kpi(L.Week, kWeek);
+                Grid.SetColumn(kC, 2); kpis.Children.Add(kC);
             }
-            panel.Children.Add(head);
 
-            var canvas = new Canvas { Width = CW, Height = CH, ClipToBounds = true, Background = Brushes.Transparent };
-            panel.Children.Add(canvas);
-
-            var info = new TextBlock
+            var legend = new StackPanel
             {
-                Text = L.DetailScanning,
-                FontSize = 10.5,
-                Foreground = B("#B8BCCB"),
-                Margin = new Thickness(2, 6, 2, 0)
+                HorizontalAlignment = HorizontalAlignment.Right,
+                VerticalAlignment = VerticalAlignment.Bottom,
+                Margin = new Thickness(0, 0, 0, 2)
             };
-            panel.Children.Add(info);
+            legend.Children.Add(LegendChip(ColWrites, L.DetailWrites));
+            legend.Children.Add(LegendChip(ColAnswers, L.DetailAnswers));
+            Grid.SetColumn(legend, 3);
+            kpis.Children.Add(legend);
+
+            // ---- the chart itself
+            var canvas = new Canvas { Width = CW, Height = CH, ClipToBounds = true, Background = Brushes.Transparent };
+
+            // ---- footer: one day at a time, today by default, the hovered day
+            // while the mouse is over the chart.
+            var fDay = new TextBlock { FontSize = 10, FontWeight = FontWeights.SemiBold, Foreground = B(th.Ink) };
+            var fTot = new TextBlock { FontSize = 10, FontWeight = FontWeights.SemiBold, Foreground = B(ColWrites), Margin = new Thickness(9, 0, 9, 0) };
+            var fSplit = new TextBlock { FontSize = 10, Foreground = B(th.Mid) };
+            var fStamp = new TextBlock { FontSize = 10, Foreground = B(th.Mid), HorizontalAlignment = HorizontalAlignment.Right };
+
+            var foot = new Grid { Margin = new Thickness(2, 8, 2, 0) };
+            foot.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            foot.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            foot.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            foot.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            Grid.SetColumn(fDay, 0); foot.Children.Add(fDay);
+            Grid.SetColumn(fTot, 1); foot.Children.Add(fTot);
+            Grid.SetColumn(fSplit, 2); foot.Children.Add(fSplit);
+            Grid.SetColumn(fStamp, 3); foot.Children.Add(fStamp);
+
+            var body = new StackPanel { Margin = new Thickness(12, 11, 12, 9) };
+            body.Children.Add(kpis);
+            body.Children.Add(canvas);
+            body.Children.Add(foot);
+
+            var shell = new Border
+            {
+                CornerRadius = new CornerRadius(9),
+                Background = B(th.WinBg),
+                BorderBrush = B(th.WinBorder),
+                BorderThickness = new Thickness(1)
+            };
+            var stack = new StackPanel();
+            stack.Children.Add(bar);
+            stack.Children.Add(body);
+            shell.Child = stack;
 
             var win = new Window
             {
                 Title = L.DetailTitle,
-                Background = B("#1E2029"),
+                WindowStyle = WindowStyle.None,
+                AllowsTransparency = true,
+                Background = Brushes.Transparent,
                 SizeToContent = SizeToContent.WidthAndHeight,
                 ResizeMode = ResizeMode.NoResize,
                 ShowInTaskbar = false,
                 Topmost = true,
                 WindowStartupLocation = WindowStartupLocation.Manual,
                 Left = Left,
-                Top = Math.Max(0, Top - CH - 110),
-                Content = panel
+                Top = Math.Max(0, Top - CH - 130),
+                Content = shell
             };
+            bar.MouseLeftButtonDown += delegate { try { win.DragMove(); } catch { } };
+            // Closing on the press, not the release: the drag handler on the
+            // title bar would otherwise swallow the release.
+            closeBtn.MouseLeftButtonDown += delegate(object s, MouseButtonEventArgs e)
+            { e.Handled = true; win.Close(); };
+            closeBtn.MouseEnter += delegate { closeBtn.Background = B(th.Highlight); };
+            closeBtn.MouseLeave += delegate { closeBtn.Background = B(th.WinBtn); };
             win.KeyDown += delegate(object s, KeyEventArgs e)
             { if (e.Key == Key.Escape) win.Close(); };
+
             var ticker = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
             win.Closed += delegate { if (_detail == win) { _detail = null; _detailRender = null; } ticker.Stop(); };
             _detail = win;
             win.Show();
 
+            // Restoring the footer to "today" is needed both on mouse-leave and
+            // after a repaint, so it lives in a variable the two share.
+            Action restFoot = null;
+            canvas.MouseLeave += delegate { if (restFoot != null) restFoot(); };
+
             // Paints the cached data instantly; called again when a scan lands.
             Action render = delegate
             {
+                LocalDaily t = _localData;
+                canvas.Children.Clear();
+                if (t == null)
                 {
-                    LocalDaily t = _localData;
-                    canvas.Children.Clear();
-                    if (t == null)
-                    {
-                        info.Text = _localScanning ? ScanProgressText() : L.ErrBadResponse;
-                        return;
-                    }
-                    int n = t.Writes.Length;
-                    long[] tot = new long[n];
-                    long maxTot = 1;
-                    for (int i = 0; i < n; i++)
-                    {
-                        tot[i] = t.Writes[i] + t.Answers[i];
-                        if (tot[i] > maxTot) maxTot = tot[i];
-                    }
-
-                    // round scale: three gridlines at clean values
-                    double[] steps = { 2, 5, 10, 15, 20, 25, 30, 40, 50, 75, 100, 150, 200 };
-                    double stepM = steps[steps.Length - 1];
-                    foreach (double s in steps)
-                        if (3 * s * 1e6 >= maxTot) { stepM = s; break; }
-                    double ymax = 3 * stepM * 1e6;
-
-                    Func<int, double> X = delegate(int i) { return ML + plotW * i / (n - 1); };
-                    Func<double, double> Y = delegate(double v) { return MT + plotH * (1 - v / ymax); };
-
-                    for (int g = 0; g <= 3; g++)
-                    {
-                        double gy = Y(g * stepM * 1e6);
-                        var gl = new Line
-                        {
-                            X1 = ML, X2 = CW - MR, Y1 = gy, Y2 = gy,
-                            Stroke = B(g == 0 ? "#3A3E52" : "#2A2D3A"),
-                            StrokeThickness = 1
-                        };
-                        canvas.Children.Add(gl);
-                        if (g > 0)
-                        {
-                            var yl = new TextBlock
-                            {
-                                Text = stepM * g + "M", FontSize = 9, Foreground = B("#6C7086")
-                            };
-                            Canvas.SetLeft(yl, 4); Canvas.SetTop(yl, gy - 7);
-                            canvas.Children.Add(yl);
-                        }
-                    }
-
-                    // month boundaries, dashed
-                    double lastLabelX = -100;
-                    for (int i = 0; i < n; i++)
-                    {
-                        DateTime dte = t.Start.AddDays(i);
-                        if (dte.Day == 1 && i > 0)
-                        {
-                            var mline = new Line
-                            {
-                                X1 = X(i), X2 = X(i), Y1 = MT, Y2 = CH - MB,
-                                Stroke = B("#4A4E63"), StrokeThickness = 1,
-                                StrokeDashArray = new DoubleCollection { 3, 4 }
-                            };
-                            canvas.Children.Add(mline);
-                        }
-                        if (dte.Day == 1 || dte.Day == 15 || i == n - 1)
-                        {
-                            double lx = X(i);
-                            if (lx - lastLabelX >= 34)
-                            {
-                                var xl = new TextBlock
-                                {
-                                    Text = dte.ToString("d MMM", Ci()), FontSize = 9, Foreground = B("#6C7086")
-                                };
-                                Canvas.SetLeft(xl, Math.Min(lx - 12, CW - 42));
-                                Canvas.SetTop(xl, CH - MB + 4);
-                                canvas.Children.Add(xl);
-                                lastLabelX = lx;
-                            }
-                        }
-                    }
-
-                    // stacked areas: writes at the bottom, answers on top
-                    var pw = new Polygon { Fill = B(ColWrites) };
-                    var pa = new Polygon { Fill = B(ColAnswers) };
-                    for (int i = 0; i < n; i++) pw.Points.Add(new Point(X(i), Y(t.Writes[i])));
-                    for (int i = n - 1; i >= 0; i--) pw.Points.Add(new Point(X(i), Y(0)));
-                    for (int i = 0; i < n; i++) pa.Points.Add(new Point(X(i), Y(tot[i])));
-                    for (int i = n - 1; i >= 0; i--) pa.Points.Add(new Point(X(i), Y(t.Writes[i])));
-                    canvas.Children.Add(pa);
-                    canvas.Children.Add(pw);
-                    var seam = new Polyline { Stroke = B("#1E2029"), StrokeThickness = 1.2 };
-                    for (int i = 0; i < n; i++) seam.Points.Add(new Point(X(i), Y(t.Writes[i])));
-                    canvas.Children.Add(seam);
-
-                    // peak label
-                    int peak = 0;
-                    for (int i = 1; i < n; i++) if (tot[i] > tot[peak]) peak = i;
-                    if (tot[peak] > 0)
-                    {
-                        var pl = new TextBlock
-                        {
-                            Text = Mt(tot[peak]), FontSize = 9.5,
-                            FontWeight = FontWeights.SemiBold, Foreground = B("#E8EAF2")
-                        };
-                        Canvas.SetLeft(pl, Math.Max(ML, Math.Min(X(peak) - 16, CW - 52)));
-                        Canvas.SetTop(pl, Math.Max(0, Y(tot[peak]) - 14));
-                        canvas.Children.Add(pl);
-                    }
-
-                    // default caption: this month and the previous month
-                    long curMonth = 0, prevMonth = 0;
-                    for (int i = 0; i < n; i++)
-                    {
-                        if (t.Start.AddDays(i).Month == today.Month) curMonth += tot[i];
-                        else prevMonth += tot[i];
-                    }
-                    string byMonth = today.ToString("MMMM", Ci()) + L.Colon + Mt(curMonth) + "   ·   " +
-                                     start.ToString("MMMM", Ci()) + L.Colon + Mt(prevMonth) +
-                                     "   ·   " + string.Format(L.Updated, _localDataTs.ToString("HH:mm"));
-                    info.Text = byMonth;
-
-                    canvas.MouseMove += delegate(object s, MouseEventArgs e)
-                    {
-                        double mx = e.GetPosition(canvas).X;
-                        int i = (int)Math.Round((mx - ML) / (plotW / (n - 1)));
-                        if (i < 0 || i >= n) { info.Text = byMonth; return; }
-                        info.Text = t.Start.AddDays(i).ToString("ddd d MMM", Ci()) + L.Colon + Mt(tot[i]) +
-                                    "  (" + L.DetailWrites + " " + Mt(t.Writes[i]) + " · " +
-                                    L.DetailAnswers + " " + Mt(t.Answers[i]) + ")";
-                    };
-                    canvas.MouseLeave += delegate { info.Text = byMonth; };
+                    fDay.Text = _localScanning ? ScanProgressText() : L.ErrBadResponse;
+                    fTot.Text = ""; fSplit.Text = ""; fStamp.Text = "";
+                    return;
                 }
+                int n = t.Writes.Length;
+                long[] tot = new long[n];
+                long maxTot = 1;
+                for (int i = 0; i < n; i++)
+                {
+                    tot[i] = t.Writes[i] + t.Answers[i];
+                    if (tot[i] > maxTot) maxTot = tot[i];
+                }
+
+                // round scale: three gridlines at clean values
+                double[] steps = { 2, 5, 10, 15, 20, 25, 30, 40, 50, 75, 100, 150, 200 };
+                double stepM = steps[steps.Length - 1];
+                foreach (double sp in steps)
+                    if (3 * sp * 1e6 >= maxTot) { stepM = sp; break; }
+                double ymax = 3 * stepM * 1e6;
+
+                // One slot per day; the bar sits centred in its slot.
+                double slot = plotW / n;
+                double barW = Math.Max(2, Math.Min(6, slot - 2.4));
+                double pad = (slot - barW) / 2;
+                Func<int, double> X = delegate(int i) { return ML + slot * i + pad; };
+                Func<double, double> Y = delegate(double v) { return MT + plotH * (1 - v / ymax); };
+
+                for (int g = 0; g <= 3; g++)
+                {
+                    double gy = Y(g * stepM * 1e6);
+                    canvas.Children.Add(new Line
+                    {
+                        X1 = ML, X2 = CW - MR, Y1 = gy, Y2 = gy,
+                        Stroke = B(g == 0 ? th.GridBase : th.Grid),
+                        StrokeThickness = 1
+                    });
+                    if (g > 0)
+                    {
+                        var yl = new TextBlock
+                        {
+                            Text = stepM * g + " M", FontSize = 9, Foreground = B(th.Axis),
+                            Width = ML - 7, TextAlignment = TextAlignment.Right
+                        };
+                        Canvas.SetLeft(yl, 0); Canvas.SetTop(yl, gy - 7);
+                        canvas.Children.Add(yl);
+                    }
+                }
+
+                // The column behind the hovered day, moved rather than recreated.
+                var hot = new Rectangle
+                {
+                    Width = slot, Height = plotH + 4,
+                    Fill = B(th.HoverCol), Visibility = Visibility.Hidden
+                };
+                Canvas.SetTop(hot, MT - 4);
+                canvas.Children.Add(hot);
+
+                // One stacked bar per day: cache writes at the bottom, prompts
+                // and answers on top, so the whole bar is the day's total.
+                for (int i = 0; i < n; i++)
+                {
+                    if (tot[i] <= 0) continue;
+                    double yTot = Y(tot[i]), yCache = Y(t.Writes[i]), y0 = Y(0);
+                    if (t.Answers[i] > 0)
+                    {
+                        var rp = new Rectangle
+                        {
+                            Width = barW, Height = Math.Max(1, yCache - yTot + 1.6),
+                            RadiusX = 1.6, RadiusY = 1.6, Fill = B(ColAnswers)
+                        };
+                        Canvas.SetLeft(rp, X(i)); Canvas.SetTop(rp, yTot);
+                        canvas.Children.Add(rp);
+                    }
+                    if (t.Writes[i] > 0)
+                    {
+                        var rc = new Rectangle
+                        {
+                            Width = barW, Height = Math.Max(1, y0 - yCache),
+                            RadiusX = 1.6, RadiusY = 1.6, Fill = B(ColWrites)
+                        };
+                        Canvas.SetLeft(rc, X(i)); Canvas.SetTop(rc, yCache);
+                        canvas.Children.Add(rc);
+                    }
+                }
+
+                // peak label, called out once
+                int peak = 0;
+                for (int i = 1; i < n; i++) if (tot[i] > tot[peak]) peak = i;
+                if (tot[peak] > 0)
+                {
+                    var pl = new TextBlock
+                    {
+                        Text = Mt(tot[peak]), FontSize = 9.5,
+                        FontWeight = FontWeights.SemiBold, Foreground = B(th.Ink),
+                        Width = 52, TextAlignment = TextAlignment.Center
+                    };
+                    Canvas.SetLeft(pl, Math.Max(ML - 6, Math.Min(X(peak) + barW / 2 - 26, CW - 52)));
+                    Canvas.SetTop(pl, Math.Max(0, Y(tot[peak]) - 15));
+                    canvas.Children.Add(pl);
+                }
+
+                // Month boundaries get a plain vertical rule; the month names
+                // themselves go under the axis, centred on their own days.
+                int runStart = 0;
+                for (int i = 1; i <= n; i++)
+                {
+                    bool edge = (i == n) || t.Start.AddDays(i).Day == 1;
+                    if (!edge) continue;
+                    if (i < n)
+                        canvas.Children.Add(new Line
+                        {
+                            X1 = ML + slot * i, X2 = ML + slot * i, Y1 = MT - 4, Y2 = MT + plotH,
+                            Stroke = B(th.MonthRule), StrokeThickness = 1
+                        });
+                    var ml = new TextBlock
+                    {
+                        Text = t.Start.AddDays(runStart).ToString("MMMM", Ci()).ToUpper(Ci()),
+                        FontSize = 8.5, Foreground = B(th.MonthLab),
+                        Width = 100, TextAlignment = TextAlignment.Center
+                    };
+                    Canvas.SetLeft(ml, ML + slot * (runStart + i) / 2.0 - 50);
+                    Canvas.SetTop(ml, MT + plotH + 19);
+                    canvas.Children.Add(ml);
+                    runStart = i;
+                }
+
+                // day labels: the 1st, the 15th and the last day, when they fit
+                double lastLabelX = -100;
+                for (int i = 0; i < n; i++)
+                {
+                    DateTime dte = t.Start.AddDays(i);
+                    if (dte.Day != 1 && dte.Day != 15 && i != n - 1) continue;
+                    double lx = X(i) + barW / 2;
+                    if (lx - lastLabelX < 40) continue;
+                    var xl = new TextBlock
+                    {
+                        Text = dte.ToString("d MMM", Ci()), FontSize = 9,
+                        Foreground = B(th.Axis), Width = 60, TextAlignment = TextAlignment.Center
+                    };
+                    Canvas.SetLeft(xl, Math.Min(lx - 30, CW - 56));
+                    Canvas.SetTop(xl, MT + plotH + 5);
+                    canvas.Children.Add(xl);
+                    lastLabelX = lx;
+                }
+
+                // The footer text for one day, reused by the hover handlers.
+                Action<int> showDay = delegate(int i)
+                {
+                    fDay.Text = t.Start.AddDays(i).ToString("ddd d MMM", Ci());
+                    fTot.Text = Mt(tot[i]);
+                    fSplit.Text = L.DetailWrites + " " + Mt(t.Writes[i]) + "   ·   " +
+                                  L.DetailAnswers + " " + Mt(t.Answers[i]);
+                };
+                restFoot = delegate
+                {
+                    hot.Visibility = Visibility.Hidden;
+                    showDay(n - 1);
+                };
+                fStamp.Text = string.Format(L.Updated, _localDataTs.ToString("HH:mm"));
+                restFoot();
+
+                // Transparent full-height strips on top of the bars: hovering a
+                // thin bar directly would be a pixel-hunting exercise.
+                for (int i = 0; i < n; i++)
+                {
+                    int idx = i;
+                    var hit = new Rectangle { Width = slot, Height = plotH + 4, Fill = Brushes.Transparent };
+                    Canvas.SetLeft(hit, ML + slot * idx); Canvas.SetTop(hit, MT - 4);
+                    hit.MouseEnter += delegate
+                    {
+                        Canvas.SetLeft(hot, ML + slot * idx);
+                        hot.Visibility = Visibility.Visible;
+                        showDay(idx);
+                    };
+                    canvas.Children.Add(hit);
+                }
+
+                // the two month totals, in the summary row
+                long curMonth = 0, prevMonth = 0;
+                for (int i = 0; i < n; i++)
+                {
+                    if (t.Start.AddDays(i).Month == today.Month) curMonth += tot[i];
+                    else prevMonth += tot[i];
+                }
+                kMonth.Text = Mt(curMonth);
+                kPrev.Text = Mt(prevMonth);
             };
             _detailRender = render;
             render();
@@ -1497,14 +1768,16 @@ namespace ClaudeWidgetApp
             ticker.Tick += delegate
             {
                 if (!win.IsVisible) { ticker.Stop(); return; }
-                if (_localScanning && _localData == null) info.Text = ScanProgressText();
+                if (_localScanning && _localData == null) fDay.Text = ScanProgressText();
             };
             ticker.Start();
         }
 
         // ---------- menu ----------
-        // Claude-styled skin for the context menu: dark rounded panel, orange
+        // Claude-styled skin for the context menu: rounded panel, orange
         // highlight, same palette as the widget. Replaces the gray system look.
+        // The @TOKEN@ placeholders are filled from the current theme - plain
+        // string.Format would choke on the {Binding} braces further down.
         const string MenuSkinXaml = @"
 <ResourceDictionary xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation'
                     xmlns:x='http://schemas.microsoft.com/winfx/2006/xaml'>
@@ -1513,7 +1786,7 @@ namespace ClaudeWidgetApp
     <Setter Property='Template'>
       <Setter.Value>
         <ControlTemplate TargetType='ContextMenu'>
-          <Border Background='#F21E2029' BorderBrush='#33FFFFFF' BorderThickness='1'
+          <Border Background='@PANEL@' BorderBrush='@MENUBORDER@' BorderThickness='1'
                   CornerRadius='7' Padding='4' MinWidth='170'>
             <ItemsPresenter/>
           </Border>
@@ -1526,14 +1799,14 @@ namespace ClaudeWidgetApp
     <Setter Property='Template'>
       <Setter.Value>
         <ControlTemplate TargetType='Separator'>
-          <Border Height='1' Background='#26FFFFFF' Margin='6,3'/>
+          <Border Height='1' Background='@SEP@' Margin='6,3'/>
         </ControlTemplate>
       </Setter.Value>
     </Setter>
   </Style>
   <Style TargetType='MenuItem'>
     <Setter Property='OverridesDefaultStyle' Value='True'/>
-    <Setter Property='Foreground' Value='#E8EAF2'/>
+    <Setter Property='Foreground' Value='@INK@'/>
     <Setter Property='FontSize' Value='11.5'/>
     <Setter Property='Template'>
       <Setter.Value>
@@ -1549,12 +1822,12 @@ namespace ClaudeWidgetApp
                          Visibility='Hidden' VerticalAlignment='Center'/>
               <ContentPresenter Grid.Column='1' ContentSource='Header' VerticalAlignment='Center'/>
               <TextBlock x:Name='Arrow' Grid.Column='2' Text='&#x203A;' FontSize='12'
-                         Foreground='#9BA0B5' Visibility='Hidden'
+                         Foreground='@MID@' Visibility='Hidden'
                          VerticalAlignment='Center' HorizontalAlignment='Right'/>
               <Popup x:Name='PART_Popup' Placement='Right' HorizontalOffset='2' VerticalOffset='-6'
                      IsOpen='{Binding IsSubmenuOpen, RelativeSource={RelativeSource TemplatedParent}}'
                      AllowsTransparency='True' Focusable='False'>
-                <Border Background='#F21E2029' BorderBrush='#33FFFFFF' BorderThickness='1'
+                <Border Background='@PANEL@' BorderBrush='@MENUBORDER@' BorderThickness='1'
                         CornerRadius='7' Padding='4' MinWidth='110'>
                   <ItemsPresenter/>
                 </Border>
@@ -1563,7 +1836,7 @@ namespace ClaudeWidgetApp
           </Border>
           <ControlTemplate.Triggers>
             <Trigger Property='IsHighlighted' Value='True'>
-              <Setter TargetName='Bd' Property='Background' Value='#2EDA7756'/>
+              <Setter TargetName='Bd' Property='Background' Value='@HIGHLIGHT@'/>
             </Trigger>
             <Trigger Property='IsChecked' Value='True'>
               <Setter TargetName='Check' Property='Visibility' Value='Visible'/>
@@ -1572,7 +1845,7 @@ namespace ClaudeWidgetApp
               <Setter TargetName='Arrow' Property='Visibility' Value='Visible'/>
             </Trigger>
             <Trigger Property='IsEnabled' Value='False'>
-              <Setter Property='Foreground' Value='#6C7086'/>
+              <Setter Property='Foreground' Value='@DIM@'/>
             </Trigger>
           </ControlTemplate.Triggers>
         </ControlTemplate>
@@ -1582,11 +1855,34 @@ namespace ClaudeWidgetApp
 </ResourceDictionary>";
 
         static ResourceDictionary _menuSkin;
+        static string _menuSkinFor;     // the theme the cached skin was built for
+
         static ResourceDictionary MenuSkin()
         {
-            if (_menuSkin == null)
-                _menuSkin = (ResourceDictionary)XamlReader.Parse(MenuSkinXaml);
+            Theme t = Theme.Current;
+            if (_menuSkin != null && _menuSkinFor == t.Name) return _menuSkin;
+            string xaml = MenuSkinXaml
+                .Replace("@PANEL@", t.Panel)
+                .Replace("@MENUBORDER@", t.MenuBorder)
+                .Replace("@SEP@", t.Sep)
+                .Replace("@INK@", t.Ink)
+                .Replace("@MID@", t.Mid)
+                .Replace("@DIM@", t.Dim)
+                .Replace("@HIGHLIGHT@", t.Highlight);
+            _menuSkin = (ResourceDictionary)XamlReader.Parse(xaml);
+            _menuSkinFor = t.Name;
             return _menuSkin;
+        }
+
+        // Everything the theme touches, repainted in one place. The gauges and
+        // the menu are rebuilt from scratch; the usage window, if it is open,
+        // is simply reopened - ShowLocalDetail closes the previous one.
+        void ApplyTheme()
+        {
+            _root.Background = B(Theme.Current.Panel);
+            BuildMenu();
+            Redraw();
+            if (_detail != null) ShowLocalDetail();
         }
 
         void BuildMenu()
@@ -1611,8 +1907,11 @@ namespace ClaudeWidgetApp
                 menu.Items.Add(new Separator());
             }
 
+            // Refresh pulls the usage figures and, in the same click, asks the
+            // repository whether a newer version is out - otherwise the update
+            // entry only appears on the six-hourly timer.
             var miR = new MenuItem { Header = L.MenuRefresh };
-            miR.Click += delegate { Refresh(); };
+            miR.Click += delegate { Refresh(); CheckUpdate(); };
             menu.Items.Add(miR);
 
             var miDetail = new MenuItem { Header = L.MenuLocalDetail };
@@ -1652,6 +1951,27 @@ namespace ClaudeWidgetApp
                 miO.Items.Add(mi);
             }
             menu.Items.Add(miO);
+
+            var miTheme = new MenuItem { Header = L.MenuTheme };
+            foreach (Theme t in Theme.All)
+            {
+                Theme th = t;
+                var mi = new MenuItem
+                {
+                    Header = th == Theme.Dark ? L.ThemeDark : L.ThemeIvory,
+                    IsCheckable = true,
+                    IsChecked = (th == Theme.Current)
+                };
+                mi.Click += delegate
+                {
+                    Theme.Use(th.Name);
+                    _cfg.Theme = th.Name;
+                    SaveConfig();
+                    ApplyTheme();
+                };
+                miTheme.Items.Add(mi);
+            }
+            menu.Items.Add(miTheme);
 
             var miLang = new MenuItem { Header = L.MenuLanguage };
             foreach (Strings s in I18n.Catalog)

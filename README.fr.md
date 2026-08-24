@@ -25,15 +25,19 @@ Loupe ou le clavier visuel.
   chiffre frais
 - Opacité réglable, lancement au démarrage de Windows en option
 - **English, Français, Español, Deutsch** — clic droit → Langue
+- **Deux thèmes** — clic droit → Thème : le *Sombre* d'origine, ou *Ivoire*,
+  bâti sur la palette d'Anthropic, pour que le widget se pose sur une barre des
+  tâches claire au lieu d'y faire un trou noir
 - **Graphique de conso locale** — clic droit → *Détail conso locale* : un
-  graphique empilé, jour par jour, des tokens neufs (écritures de cache et
-  messages + réponses) sur le mois en cours et le mois précédent, calculé
+  bâtonnet par jour des tokens neufs (écritures de cache en bas, messages et
+  réponses au-dessus) sur le mois en cours et le mois précédent, calculé
   depuis vos conversations Claude Code locales. Rien ne quitte votre machine.
 - **Mises à jour intégrées** — le widget compare sa version à ce dépôt toutes
-  les 6 heures ; quand une nouvelle version est publiée, le contour passe à
-  l'orange Claude et une entrée *Mise à jour disponible* apparaît en tête du
-  clic droit
-- Menu clic droit au style Claude — sombre, arrondi, surlignage orange
+  les 6 heures, et à chaque clic sur *Actualiser* ; quand une nouvelle version
+  est publiée, le contour passe à l'orange Claude et une entrée *Mise à jour
+  disponible* apparaît en tête du clic droit
+- Menu clic droit au style Claude — arrondi, surlignage orange, aux couleurs du
+  thème choisi
 - Ne se replace au-dessus de la barre des tâches que si elle l'a réellement
   recouvert, au lieu de deux fois par seconde — fini le clignotement
 

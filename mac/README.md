@@ -7,9 +7,11 @@ and the Claude logo. Drag it anywhere, right-click it for the menu.
 *Version française plus bas.*
 
 Feature parity with the Windows version: the gauge panel, reset countdowns,
-the local usage chart (right-click → *Local usage details*), languages,
-opacity, hide in full-screen apps, log, restart, start at login, and the
-built-in update check (orange border + *Update available* in the menu).
+the local usage chart (right-click → *Local usage details*), the two themes
+(right-click → Theme: *Dark* or *Ivory*), languages, opacity, hide in
+full-screen apps, log, restart, start at login, and the built-in update check
+(orange border + *Update available* in the menu, also refreshed on every
+*Refresh* click).
 
 ## Requirements
 

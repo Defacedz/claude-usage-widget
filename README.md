@@ -23,14 +23,19 @@ and the on-screen keyboard use.
   more than 12 minutes old, so a frozen number never looks like a fresh one
 - Adjustable opacity, optional start with Windows
 - **English, Français, Español, Deutsch** — right-click → Language
-- **Local usage chart** — right-click → *Local usage details*: a stacked daily
-  chart of new tokens (cache writes vs prompts + answers) over the current and
-  previous month, computed from your local Claude Code transcripts. Nothing
-  leaves your machine.
-- **Built-in updates** — the widget checks this repository every 6 hours; when
-  a newer version is published the border turns Claude-orange and an *Update
-  available* entry appears at the top of the right-click menu
-- Claude-styled right-click menu — dark, rounded, orange highlight
+- **Two themes** — right-click → Theme: the original *Dark*, or *Ivory*, built
+  on Anthropic's own palette so the widget sits on a light Windows taskbar
+  instead of punching a black hole in it
+- **Local usage chart** — right-click → *Local usage details*: one stacked bar
+  per day of new tokens (cache writes at the bottom, prompts + answers on top)
+  over the current and previous month, computed from your local Claude Code
+  transcripts. Nothing leaves your machine.
+- **Built-in updates** — the widget checks this repository every 6 hours, and
+  on every *Refresh* click; when a newer version is published the border turns
+  Claude-orange and an *Update available* entry appears at the top of the
+  right-click menu
+- Claude-styled right-click menu — rounded, orange highlight, painted in
+  whichever theme is selected
 - Re-asserts topmost only when the taskbar has actually covered it, instead of
   twice a second — no more flicker
 
