@@ -378,7 +378,7 @@ namespace ClaudeWidgetApp
     {
         // Bump this when publishing: the update check compares it against the
         // same line in the repository's ClaudeWidget.cs.
-        public const string Version = "2026.08.29";
+        public const string Version = "2026.08.30";
         const string SourceUrl = "https://raw.githubusercontent.com/Defacedz/claude-usage-widget/main/ClaudeWidget.cs";
         public const string WebInstall = "https://raw.githubusercontent.com/Defacedz/claude-usage-widget/main/web-install.ps1";
 
@@ -623,18 +623,35 @@ namespace ClaudeWidgetApp
         {
             try
             {
-                var req = NewRequest(SourceUrl);
+                // raw.githubusercontent.com sits behind a CDN that serves a
+                // copy for a few minutes. A unique query string gives it a
+                // cache key it has never seen, and NoCacheNoStore keeps the
+                // local WinINET cache out of the way as well.
+                var req = NewRequest(SourceUrl + "?t=" + DateTime.UtcNow.Ticks.ToString(CultureInfo.InvariantCulture));
                 req.Method = "GET";
+                req.CachePolicy = new System.Net.Cache.RequestCachePolicy(
+                    System.Net.Cache.RequestCacheLevel.NoCacheNoStore);
                 using (var resp = (HttpWebResponse)req.GetResponse())
                 using (var r = new StreamReader(resp.GetResponseStream()))
                 {
                     Match m = Regex.Match(r.ReadToEnd(), "Version = \"([^\"]+)\"");
-                    bool avail = m.Success && m.Groups[1].Value != Version;
-                    if (avail) Log("update available: " + m.Groups[1].Value + " (local " + Version + ")");
+                    if (!m.Success) return false;
+                    string remote = m.Groups[1].Value;
+                    bool avail = IsNewer(remote, Version);
+                    if (avail) Log("update available: " + remote + " (local " + Version + ")");
                     return avail;
                 }
             }
             catch { return false; }
+        }
+
+        // Strictly newer, never merely different. Versions are yyyy.MM.dd, so
+        // an ordinal comparison is chronological. Comparing with != meant that
+        // a stale answer from the CDN - an older version than the one already
+        // installed - lit the update border and never turned it off again.
+        static bool IsNewer(string remote, string local)
+        {
+            return string.CompareOrdinal(remote, local) > 0;
         }
 
         public static Usage GetUsage()

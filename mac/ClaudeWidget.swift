@@ -15,7 +15,7 @@ import Foundation
 
 // Bump this when publishing: the update check compares it against the same
 // line in the repository's mac/ClaudeWidget.swift.
-let appVersion = "2026.08.29"
+let appVersion = "2026.08.30"
 let sourceUrl = "https://raw.githubusercontent.com/Defacedz/claude-usage-widget/main/mac/ClaudeWidget.swift"
 let webInstallCommand = "curl -fsSL https://raw.githubusercontent.com/Defacedz/claude-usage-widget/main/mac/web-install.sh | sh"
 
@@ -798,15 +798,23 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     // Any failure means "no update" - the check must never break the gauges.
     func checkUpdate() {
         DispatchQueue.global(qos: .utility).async { [weak self] in
-            guard let url = URL(string: sourceUrl) else { return }
+            // raw.githubusercontent.com sits behind a CDN that serves a copy
+            // for a few minutes; a unique query string gives it a cache key it
+            // has never seen, and the reload policy skips the local cache too.
+            let stamp = String(Int(Date().timeIntervalSince1970))
+            guard let url = URL(string: sourceUrl + "?t=" + stamp) else { return }
+            var request = URLRequest(url: url)
+            request.cachePolicy = .reloadIgnoringLocalAndRemoteCacheData
             var available = false
             let sem = DispatchSemaphore(value: 0)
-            URLSession.shared.dataTask(with: url) { data, _, _ in
+            URLSession.shared.dataTask(with: request) { data, _, _ in
                 if let d = data, let s = String(data: d, encoding: .utf8),
                    let r = s.range(of: "appVersion = \"") {
                     let rest = s[r.upperBound...]
                     if let end = rest.firstIndex(of: "\"") {
-                        available = String(rest[..<end]) != appVersion
+                        // strictly newer, never merely different: an older
+                        // answer from the CDN must not light the update border
+                        available = String(rest[..<end]).compare(appVersion) == .orderedDescending
                     }
                 }
                 sem.signal()
