@@ -409,7 +409,7 @@ namespace ClaudeWidgetApp
     {
         // Bump this when publishing: the update check compares it against the
         // same line in the repository's ClaudeWidget.cs.
-        public const string Version = "2026.09.08";
+        public const string Version = "2026.09.09";
         const string SourceUrl = "https://raw.githubusercontent.com/Defacedz/claude-usage-widget/main/ClaudeWidget.cs";
         public const string ArchiveUrl = "https://github.com/Defacedz/claude-usage-widget/archive/refs/heads/main.zip";
 
@@ -1664,12 +1664,21 @@ namespace ClaudeWidgetApp
         }
 
         // Single entry point for repainting: also used when the language changes.
+        // The displayed error, translated NOW, in the render language. The
+        // raw system text only surfaces for codes we have no words for.
+        string ErrText()
+        {
+            if (_lastErrCode == 429) return L.ErrRateLimited;
+            if (_lastErrCode == 401 || _lastErrCode == 403) return L.ErrExpired;
+            return _lastErr;
+        }
+
         void Redraw()
         {
             if (_last != null) Render();
             else
             {
-                string msg = _lastErr == null ? L.Loading : string.Format(L.Offline, _lastErr);
+                string msg = _lastErr == null ? L.Loading : string.Format(L.Offline, ErrText());
                 // Rate limited or signed out with nothing to show yet: a NEW
                 // Claude Code session is the way out of both - it loads the
                 // statusline, which pushes the numbers locally, no API and no
@@ -1703,7 +1712,7 @@ namespace ClaudeWidgetApp
                 // the tooltip keep saying the data is stale.
                 _root.BorderBrush = B(_updateAvailable ? "#CCDA7756" : (stale ? "#CCE05252" : "#99E8A33D"));
                 _rows.Opacity = stale ? 0.45 : 1.0;
-                tips.Add(string.Format(L.FrozenFor, FmtAge(age), _lastErr));
+                tips.Add(string.Format(L.FrozenFor, FmtAge(age), ErrText()));
             }
             else
             {
@@ -1744,11 +1753,12 @@ namespace ClaudeWidgetApp
                         var hr = we.Response as HttpWebResponse;
                         code = hr == null ? 0 : (int)hr.StatusCode;
                         if (hr != null) hr.Close();
-                        // Map the two codes a person can act on to plain
-                        // words; anything else keeps its raw message.
-                        if (code == 429) err = I18n.T.ErrRateLimited;
-                        else if (code == 401 || code == 403) err = I18n.T.ErrExpired;
-                        else err = we.Message;
+                        // Keep the RAW message only. Translation happens at
+                        // render time (ErrText): storing a localized string
+                        // here froze it in whatever language was active when
+                        // the failure happened, and the band ended up half
+                        // one language, half another.
+                        err = we.Message;
                     }
                     catch (Exception e) { err = e.Message; }
                 }
