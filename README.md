@@ -190,10 +190,14 @@ installer instead. To escape an old version stuck behind that detection,
 clone this repository and double-click `Installer.bat` — same result, no
 download-and-execute pattern involved.
 
-**No status line appears in Claude Code.** Another tool probably owns the
-`statusLine` entry of `~/.claude/settings.json` — the widget never overwrites
-it (the log says so at startup). Remove that entry and restart the widget to
-let it wire the feed.
+**No status line appears in Claude Code.** Claude Code loads its statusline
+when a session starts: only sessions opened *after* the widget wired the feed
+show it and push numbers. Sessions already running are unaffected — no need
+to close them, the next one you open feeds the widget. If it still does not
+appear, another tool probably owns the `statusLine` entry of
+`~/.claude/settings.json` — the widget never overwrites a live one (the log
+says so at startup); an entry whose target file no longer exists is dead and
+gets replaced automatically.
 
 **Nothing refreshes at all, and the log shows timeouts.** The widget requests
 IPv4 on purpose: on a router that advertises an IPv6 prefix without actually

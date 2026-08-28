@@ -200,10 +200,15 @@ local. Pour sortir d'une vieille version coincée derrière cette détection :
 clonez ce dépôt et double-cliquez `Installer.bat` — même résultat, sans motif
 télécharger-et-exécuter.
 
-**Aucune ligne d'état n'apparaît dans Claude Code.** Un autre outil occupe
-sans doute l'entrée `statusLine` de `~/.claude/settings.json` — le widget ne
-l'écrase jamais (le journal le dit au démarrage). Retirez cette entrée puis
-redémarrez le widget pour qu'il branche le flux.
+**Aucune ligne d'état n'apparaît dans Claude Code.** Claude Code charge sa
+statusline au démarrage d'une session : seules les sessions ouvertes *après*
+le branchement du flux l'affichent et poussent les chiffres. Les sessions
+déjà en cours ne sont pas concernées — inutile de les fermer, la prochaine
+ouverte alimente le widget. Si rien n'apparaît malgré tout, un autre outil
+occupe sans doute l'entrée `statusLine` de `~/.claude/settings.json` — le
+widget n'écrase jamais une entrée vivante (le journal le dit au démarrage) ;
+une entrée dont le fichier cible n'existe plus est morte et remplacée
+automatiquement.
 
 **Plus rien ne se rafraîchit et le journal montre des délais dépassés.** Le
 widget demande de l'IPv4 volontairement : sur une box qui annonce un préfixe

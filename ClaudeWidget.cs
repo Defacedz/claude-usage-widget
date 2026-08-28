@@ -39,6 +39,7 @@ namespace ClaudeWidgetApp
         [DataMember] public string refresh_token;
         [DataMember] public long expires_in;
     }
+    [DataContract] public class UpdateResult { [DataMember] public string version_to; }
     [DataContract] public class Limit
     {
         [DataMember] public double? utilization;
@@ -403,7 +404,7 @@ namespace ClaudeWidgetApp
     {
         // Bump this when publishing: the update check compares it against the
         // same line in the repository's ClaudeWidget.cs.
-        public const string Version = "2026.09.05";
+        public const string Version = "2026.09.06";
         const string SourceUrl = "https://raw.githubusercontent.com/Defacedz/claude-usage-widget/main/ClaudeWidget.cs";
         public const string ArchiveUrl = "https://github.com/Defacedz/claude-usage-widget/archive/refs/heads/main.zip";
 
@@ -419,6 +420,36 @@ namespace ClaudeWidgetApp
         static string CredPath
         {
             get { return System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".claude\\.credentials.json"); }
+        }
+        static string VersionPath
+        {
+            get { return System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".claude\\.last-update-result.json"); }
+        }
+
+        // The endpoint buckets unknown User-Agents into a much harsher rate
+        // limit - that is what the 2026-08 "429 for everybody" actually was,
+        // and it hit the token hosts too (refreshes died as ProtocolError).
+        // It wants "claude-code/<version>"; the real version is read from
+        // Claude Code's own update marker. Credit: the vibespan fork found it.
+        static string _userAgent;
+        static string UserAgent
+        {
+            get
+            {
+                if (_userAgent != null) return _userAgent;
+                string ver = null;
+                try
+                {
+                    if (File.Exists(VersionPath))
+                    {
+                        var u = Json.Read<UpdateResult>(File.ReadAllText(VersionPath));
+                        if (u != null) ver = u.version_to;
+                    }
+                }
+                catch { }
+                _userAgent = "claude-code/" + (string.IsNullOrEmpty(ver) ? "2.1.0" : ver);
+                return _userAgent;
+            }
         }
         static string CacheDir
         {
@@ -470,7 +501,7 @@ namespace ClaudeWidgetApp
             var req = (HttpWebRequest)WebRequest.Create(url);
             req.Timeout = 20000;
             req.ReadWriteTimeout = 20000;   // otherwise a stalled stream can hang for 5 min
-            req.UserAgent = "ClaudeWidget";
+            req.UserAgent = UserAgent;
             try
             {
                 req.ServicePoint.BindIPEndPointDelegate =
@@ -837,6 +868,30 @@ namespace ClaudeWidgetApp
             catch { return State.Off; }
         }
 
+        // A statusline whose command references an absolute file that no
+        // longer exists is dead: it draws nothing and belongs to nobody
+        // (typically an entry left behind by an uninstalled tool, or a
+        // profile copied from another machine). Dead entries are fair game
+        // for replacement; anything else foreign stays untouched. Commands
+        // with no absolute path (a bare name found through PATH) cannot be
+        // proven dead, so they count as alive.
+        static bool IsDeadCommand(string block)
+        {
+            try
+            {
+                Match m = Regex.Match(block, "\"command\"\\s*:\\s*\"((?:[^\"\\\\]|\\\\.)*)\"");
+                if (!m.Success) return false;
+                string cmd = m.Groups[1].Value.Replace("\\\\", "\\").Replace("\\\"", "\"");
+                var paths = Regex.Matches(cmd, "[A-Za-z]:\\\\[^\"<>|]+?\\.(exe|ps1|cmd|bat|js|py|sh)",
+                                          RegexOptions.IgnoreCase);
+                if (paths.Count == 0) return false;
+                foreach (Match p in paths)
+                    if (!File.Exists(p.Value)) return true;
+                return false;
+            }
+            catch { return false; }
+        }
+
         // The settings file belongs to Claude Code and carries keys we know
         // nothing about (hooks, plugins, permissions...), so we splice text in
         // place instead of re-serializing - same reasoning as
@@ -845,9 +900,6 @@ namespace ClaudeWidgetApp
         {
             try
             {
-                State st = Detect();
-                if (st == State.Foreign) { Api.Log("feed not wired: statusline owned by another tool"); return false; }
-
                 string exe = System.Reflection.Assembly.GetExecutingAssembly().Location;
                 // Prefer the helper built without the uiAccess manifest: a
                 // statusline spawn neither needs nor reliably gets the higher
@@ -859,29 +911,35 @@ namespace ClaudeWidgetApp
 
                 string json = File.Exists(SettingsPath) ? File.ReadAllText(SettingsPath) : "";
 
-                // Already ours: right path -> nothing to do; stale path (a
-                // moved install, or an older version that registered the
-                // uiAccess exe itself) -> strip the entry and re-insert.
-                if (st == State.Ours)
+                State st = Detect();
+                if (st == State.Foreign)
                 {
+                    // A live foreign statusline is sacred. A dead one - its
+                    // target file is gone - is replaced.
+                    int fs, fe;
+                    string fblock = StatusLineBlock(json, out fs, out fe);
+                    if (fblock != null && IsDeadCommand(fblock))
+                    {
+                        json = StripStatusLine(json);
+                        Api.Log("dead statusline replaced (its target file is gone)");
+                    }
+                    else { Api.Log("feed not wired: statusline owned by another tool"); return false; }
+                }
+                else if (st == State.Ours)
+                {
+                    // Right path -> nothing to do; stale path (a moved
+                    // install, or an older version that registered the
+                    // uiAccess exe itself) -> strip and re-insert.
                     int bs, be;
                     string block = StatusLineBlock(json, out bs, out be);
                     if (block == null) return false;
                     if (block.IndexOf(exe.Replace("\\", "\\\\"), StringComparison.OrdinalIgnoreCase) >= 0)
                         return true;
-                    int be2 = be;
-                    while (be2 < json.Length && char.IsWhiteSpace(json[be2])) be2++;
-                    if (be2 < json.Length && json[be2] == ',') be = be2 + 1;
-                    else
-                    {
-                        int bs2 = bs - 1;
-                        while (bs2 >= 0 && char.IsWhiteSpace(json[bs2])) bs2--;
-                        if (bs2 >= 0 && json[bs2] == ',') bs = bs2;
-                    }
-                    json = json.Substring(0, bs) + json.Substring(be);
+                    json = StripStatusLine(json);
                     Api.Log("feed entry rewritten (stale command path)");
                 }
 
+                if (json == null) return false;
                 string upd;
                 int brace = json.IndexOf('{');
                 if (brace < 0) upd = "{\n  " + entry + "\n}\n";
@@ -901,27 +959,34 @@ namespace ClaudeWidgetApp
             catch (Exception e) { Api.Log("feed enable failed: " + e.Message); return false; }
         }
 
+        // Remove the whole "statusLine" entry plus the comma that tied it to
+        // its neighbour - after it if there is one, otherwise before.
+        // Returns null when the entry is absent.
+        static string StripStatusLine(string json)
+        {
+            int s, e;
+            if (StatusLineBlock(json, out s, out e) == null) return null;
+            int e2 = e;
+            while (e2 < json.Length && char.IsWhiteSpace(json[e2])) e2++;
+            if (e2 < json.Length && json[e2] == ',') e = e2 + 1;
+            else
+            {
+                int s2 = s - 1;
+                while (s2 >= 0 && char.IsWhiteSpace(json[s2])) s2--;
+                if (s2 >= 0 && json[s2] == ',') s = s2;
+            }
+            return json.Substring(0, s) + json.Substring(e);
+        }
+
         public static bool Disable()
         {
             try
             {
                 if (Detect() != State.Ours) return false;
                 string json = File.ReadAllText(SettingsPath);
-                int s, e;
-                if (StatusLineBlock(json, out s, out e) == null) return false;
-
-                // Swallow the comma that tied the entry to its neighbour -
-                // after it if there is one, otherwise before.
-                int e2 = e;
-                while (e2 < json.Length && char.IsWhiteSpace(json[e2])) e2++;
-                if (e2 < json.Length && json[e2] == ',') e = e2 + 1;
-                else
-                {
-                    int s2 = s - 1;
-                    while (s2 >= 0 && char.IsWhiteSpace(json[s2])) s2--;
-                    if (s2 >= 0 && json[s2] == ',') s = s2;
-                }
-                WriteSettings(json, json.Substring(0, s) + json.Substring(e));
+                string upd = StripStatusLine(json);
+                if (upd == null) return false;
+                WriteSettings(json, upd);
                 try { File.Delete(FeedPath); } catch { }
                 Api.Log("local feed disabled (statusLine removed)");
                 return true;
