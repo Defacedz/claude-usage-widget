@@ -191,6 +191,15 @@ rétablit seul — et tant que Claude Code tourne, les chiffres passent par le
 flux local, sans aucun appel d'API à limiter. Un 429 avec des jauges figées ?
 Ouvrez Claude Code.
 
+**Microsoft Defender a bloqué la mise à jour (versions jusqu'à 2026.09.03).**
+L'ancien bouton lançait `powershell irm ... | iex` — la forme exacte d'un
+« dropper » de logiciel malveillant, que le modèle de Defender flaire à juste
+titre (`Trojan:Win32/Commando.A!ml`) et tue en plein vol. Depuis 2026.09.04,
+le widget télécharge lui-même l'archive du dépôt puis élève l'installateur
+local. Pour sortir d'une vieille version coincée derrière cette détection :
+clonez ce dépôt et double-cliquez `Installer.bat` — même résultat, sans motif
+télécharger-et-exécuter.
+
 **Aucune ligne d'état n'apparaît dans Claude Code.** Un autre outil occupe
 sans doute l'entrée `statusLine` de `~/.claude/settings.json` — le widget ne
 l'écrase jamais (le journal le dit au démarrage). Retirez cette entrée puis

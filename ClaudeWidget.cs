@@ -65,6 +65,10 @@ namespace ClaudeWidgetApp
         // than an enum: a config file written by an older build has no value
         // at all, and Theme.Use() maps anything unknown back to dark.
         [DataMember] public string Theme;
+        // Start-with-Windows is on by default. Null (older config, or first
+        // run) means "never decided": the startup shortcut gets created.
+        // Only an explicit false - the user unticked the menu - blocks it.
+        [DataMember] public bool? AutoStart;
     }
 
     // ---------- themes ----------
@@ -394,9 +398,9 @@ namespace ClaudeWidgetApp
     {
         // Bump this when publishing: the update check compares it against the
         // same line in the repository's ClaudeWidget.cs.
-        public const string Version = "2026.09.03";
+        public const string Version = "2026.09.04";
         const string SourceUrl = "https://raw.githubusercontent.com/Defacedz/claude-usage-widget/main/ClaudeWidget.cs";
-        public const string WebInstall = "https://raw.githubusercontent.com/Defacedz/claude-usage-widget/main/web-install.ps1";
+        public const string ArchiveUrl = "https://github.com/Defacedz/claude-usage-widget/archive/refs/heads/main.zip";
 
         // Public OAuth client id of Claude Code - an identifier, not a secret.
         const string ClientId = "9d1c250a-e61b-44d9-88ed-5944d1962f5e";
@@ -668,6 +672,23 @@ namespace ClaudeWidgetApp
         static bool IsNewer(string remote, string local)
         {
             return string.CompareOrdinal(remote, local) > 0;
+        }
+
+        // Plain file download through the same IPv4-aware plumbing as every
+        // other request. Used by the updater; follows GitHub's redirect to
+        // codeload automatically.
+        public static void DownloadFile(string url, string path)
+        {
+            var req = NewRequest(url);
+            req.Method = "GET";
+            using (var resp = (HttpWebResponse)req.GetResponse())
+            using (var src = resp.GetResponseStream())
+            using (var dst = File.Create(path))
+            {
+                var buf = new byte[81920];
+                int n;
+                while ((n = src.Read(buf, 0, buf.Length)) > 0) dst.Write(buf, 0, n);
+            }
         }
 
         public static Usage GetUsage()
@@ -1178,6 +1199,20 @@ namespace ClaudeWidgetApp
         }
         static string CfgPath { get { return System.IO.Path.Combine(CfgDir, "config.json"); } }
 
+        static string StartupLnkPath
+        {
+            get { return System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Startup), "Claude Widget.lnk"); }
+        }
+
+        static void CreateStartupShortcut()
+        {
+            var t = Type.GetTypeFromProgID("WScript.Shell");
+            dynamic shell = Activator.CreateInstance(t);
+            dynamic lnk = shell.CreateShortcut(StartupLnkPath);
+            lnk.TargetPath = System.Reflection.Assembly.GetExecutingAssembly().Location;
+            lnk.Save();
+        }
+
         static Brush B(string hex)
         {
             return (Brush)new BrushConverter().ConvertFromString(hex);
@@ -1267,6 +1302,13 @@ namespace ClaudeWidgetApp
                 // already wired, and refuses to touch a statusline owned by
                 // another tool - that is the only case left to the user.
                 ThreadPool.QueueUserWorkItem(delegate { try { Feed.Enable(); } catch { } });
+                // Start with Windows, on by default: recreate the Startup
+                // shortcut unless the user explicitly unticked the entry.
+                if (_cfg.AutoStart != false && !File.Exists(StartupLnkPath))
+                {
+                    try { CreateStartupShortcut(); Api.Log("startup shortcut created (default on)"); }
+                    catch (Exception e) { Api.Log("startup shortcut failed: " + e.Message); }
+                }
                 Refresh(false);
                 // One-minute tick: the feed check is a local file stat, and
                 // the API call inside is gated by _nextApiAt anyway.
@@ -1674,14 +1716,37 @@ namespace ClaudeWidgetApp
 
         void StartUpdate()
         {
-            // web-install.ps1 downloads the repository and runs Installer.ps1
-            // elevated; the installer kills this instance and starts the new one.
-            try
+            // The obvious one-liner - powershell "irm ... | iex" - is the
+            // exact command shape of a malware dropper, and Defender's ML
+            // model flags it as such (Trojan:Win32/Commando.A!ml, observed
+            // 2026-08-28, killing the update mid-flight). So the widget
+            // downloads the repository archive itself over the plumbing it
+            // already trusts, extracts it, and elevates the LOCAL installer:
+            // no remote code is ever piped into a shell. The installer then
+            // kills this instance and starts the new one.
+            ThreadPool.QueueUserWorkItem(delegate
             {
-                System.Diagnostics.Process.Start("powershell.exe",
-                    "-NoProfile -ExecutionPolicy Bypass -Command \"irm " + Api.WebInstall + " | iex\"");
-            }
-            catch (Exception e) { Api.Log("update launch failed: " + e.Message); }
+                try
+                {
+                    string work = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "claudewidget-update");
+                    try { Directory.Delete(work, true); } catch { }
+                    Directory.CreateDirectory(work);
+                    string zip = System.IO.Path.Combine(work, "source.zip");
+                    Api.DownloadFile(Api.ArchiveUrl, zip);
+                    System.IO.Compression.ZipFile.ExtractToDirectory(zip, work);
+                    string installer = System.IO.Path.Combine(work, "claude-usage-widget-main", "Installer.ps1");
+                    if (!File.Exists(installer)) { Api.Log("update failed: Installer.ps1 missing from archive"); return; }
+                    var psi = new System.Diagnostics.ProcessStartInfo
+                    {
+                        FileName = "powershell.exe",
+                        Arguments = "-NoProfile -ExecutionPolicy Bypass -File \"" + installer + "\"",
+                        Verb = "runas",          // one UAC prompt, as before
+                        UseShellExecute = true
+                    };
+                    System.Diagnostics.Process.Start(psi);
+                }
+                catch (Exception e) { Api.Log("update launch failed: " + e.Message); }
+            });
         }
 
         // ---------- local usage window ----------
@@ -2445,21 +2510,17 @@ namespace ClaudeWidgetApp
             menu.Items.Add(miLang);
 
             var miA = new MenuItem { Header = L.MenuStartWithWindows, IsCheckable = true };
-            string lnkPath = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Startup), "Claude Widget.lnk");
-            miA.IsChecked = File.Exists(lnkPath);
+            miA.IsChecked = File.Exists(StartupLnkPath);
             miA.Click += delegate
             {
                 try
                 {
-                    if (miA.IsChecked)
-                    {
-                        var t = Type.GetTypeFromProgID("WScript.Shell");
-                        dynamic shell = Activator.CreateInstance(t);
-                        dynamic lnk = shell.CreateShortcut(lnkPath);
-                        lnk.TargetPath = System.Reflection.Assembly.GetExecutingAssembly().Location;
-                        lnk.Save();
-                    }
-                    else if (File.Exists(lnkPath)) File.Delete(lnkPath);
+                    if (miA.IsChecked) CreateStartupShortcut();
+                    else if (File.Exists(StartupLnkPath)) File.Delete(StartupLnkPath);
+                    // Remember the explicit choice: false is the only value
+                    // that stops the automatic re-creation at startup.
+                    _cfg.AutoStart = miA.IsChecked;
+                    SaveConfig();
                 }
                 catch { }
             };

@@ -181,6 +181,15 @@ and while Claude Code is running, the numbers come from the local feed instead,
 with no API call to be limited. If you see a 429 with stale gauges, open
 Claude Code.
 
+**Microsoft Defender flagged the update (versions up to 2026.09.03).** The
+old update button ran `powershell irm ... | iex` — the exact command shape of
+a malware dropper, which Defender's ML model rightfully dislikes
+(`Trojan:Win32/Commando.A!ml`) and kills mid-flight. Since 2026.09.04 the
+widget downloads the repository archive itself and elevates the local
+installer instead. To escape an old version stuck behind that detection,
+clone this repository and double-click `Installer.bat` — same result, no
+download-and-execute pattern involved.
+
 **No status line appears in Claude Code.** Another tool probably owns the
 `statusLine` entry of `~/.claude/settings.json` — the widget never overwrites
 it (the log says so at startup). Remove that entry and restart the widget to

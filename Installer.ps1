@@ -43,6 +43,7 @@ try {
     & $csc /nologo /target:winexe /out:$exe /win32manifest:$man /codepage:65001 `
         /r:System.dll /r:System.Core.dll /r:System.Xaml.dll `
         /r:System.Runtime.Serialization.dll /r:Microsoft.CSharp.dll `
+        /r:System.IO.Compression.dll /r:System.IO.Compression.FileSystem.dll `
         /r:"$wpf\PresentationFramework.dll" /r:"$wpf\PresentationCore.dll" /r:"$wpf\WindowsBase.dll" `
         $src
     if ($LASTEXITCODE -ne 0 -or -not (Test-Path $exe)) { Fail 'Build failed (see messages above).' }
@@ -56,6 +57,7 @@ try {
     & $csc /nologo /target:winexe /out:$feedExe /codepage:65001 `
         /r:System.dll /r:System.Core.dll /r:System.Xaml.dll `
         /r:System.Runtime.Serialization.dll /r:Microsoft.CSharp.dll `
+        /r:System.IO.Compression.dll /r:System.IO.Compression.FileSystem.dll `
         /r:"$wpf\PresentationFramework.dll" /r:"$wpf\PresentationCore.dll" /r:"$wpf\WindowsBase.dll" `
         $src
     if ($LASTEXITCODE -ne 0 -or -not (Test-Path $feedExe)) { Fail 'Feed helper build failed (see messages above).' }
