@@ -182,6 +182,7 @@ namespace ClaudeWidgetApp
         public string SourceFeed;       // tooltip line when the numbers came from the feed
         public string ErrRateLimited;   // friendlier than the raw HTTP 429 message
         public string FeedHint;         // appended to the offline message on HTTP 429
+        public string FeedHintBusy;     // same spot, when a foreign statusline blocks the feed
     }
 
     public static class I18n
@@ -235,8 +236,9 @@ namespace ClaudeWidgetApp
                 ErrNotSignedIn = "Claude Code is not signed in (run it once)",
                 ErrBadResponse = "Unreadable API response",
                 SourceFeed = "source: Claude Code (local feed)",
-                ErrRateLimited = "rate limited by Anthropic, retrying later",
-                FeedHint = "Open Claude Code: the numbers arrive locally, no API involved"
+                ErrRateLimited = "API rate limited (429)",
+                FeedHint = "Open Claude Code",
+                FeedHintBusy = "Statusline taken (see log)"
             };
         }
 
@@ -278,8 +280,9 @@ namespace ClaudeWidgetApp
                 ErrNotSignedIn = "Claude Code n'est pas connecté (lance-le une fois)",
                 ErrBadResponse = "Réponse de l'API illisible",
                 SourceFeed = "source : Claude Code (flux local)",
-                ErrRateLimited = "limité par Anthropic, nouvel essai plus tard",
-                FeedHint = "Ouvre Claude Code : les chiffres arrivent en local, sans l'API"
+                ErrRateLimited = "API limitée (429)",
+                FeedHint = "Ouvre Claude Code",
+                FeedHintBusy = "Statusline occupée (voir journal)"
             };
         }
 
@@ -321,8 +324,9 @@ namespace ClaudeWidgetApp
                 ErrNotSignedIn = "Claude Code no ha iniciado sesión (ejecútalo una vez)",
                 ErrBadResponse = "Respuesta de la API ilegible",
                 SourceFeed = "fuente: Claude Code (local)",
-                ErrRateLimited = "limitado por Anthropic, se reintentará más tarde",
-                FeedHint = "Abra Claude Code: los números llegan en local, sin la API"
+                ErrRateLimited = "API limitada (429)",
+                FeedHint = "Abra Claude Code",
+                FeedHintBusy = "Statusline ocupada (ver registro)"
             };
         }
 
@@ -364,8 +368,9 @@ namespace ClaudeWidgetApp
                 ErrNotSignedIn = "Claude Code ist nicht angemeldet (einmal starten)",
                 ErrBadResponse = "Unlesbare API-Antwort",
                 SourceFeed = "Quelle: Claude Code (lokal)",
-                ErrRateLimited = "von Anthropic begrenzt, späterer Versuch",
-                FeedHint = "Claude Code öffnen: die Zahlen kommen lokal an, ohne die API"
+                ErrRateLimited = "API begrenzt (429)",
+                FeedHint = "Claude Code öffnen",
+                FeedHintBusy = "Statusline belegt (s. Protokoll)"
             };
         }
     }
@@ -398,7 +403,7 @@ namespace ClaudeWidgetApp
     {
         // Bump this when publishing: the update check compares it against the
         // same line in the repository's ClaudeWidget.cs.
-        public const string Version = "2026.09.04";
+        public const string Version = "2026.09.05";
         const string SourceUrl = "https://raw.githubusercontent.com/Defacedz/claude-usage-widget/main/ClaudeWidget.cs";
         public const string ArchiveUrl = "https://github.com/Defacedz/claude-usage-widget/archive/refs/heads/main.zip";
 
@@ -1506,15 +1511,23 @@ namespace ClaudeWidgetApp
             _root.BorderBrush = B(_updateAvailable ? "#CCDA7756" : Theme.Current.Border);
             // A Grid centres the text properly; a bare TextBlock in a
             // StackPanel would sit at the top of the 36px band.
-            var row = new Grid { Height = 36 };
+            // Width pinned to the gauge rows' footprint: the window sizes to
+            // content, so an unconstrained error message used to widen the
+            // whole widget. The widget must NEVER change size - the text
+            // wraps, gets cut with an ellipsis, and lives whole in the
+            // tooltip instead.
+            var row = new Grid { Height = 36, Width = 166 };
             row.Children.Add(new TextBlock
             {
                 Text = msg,
-                FontSize = 10,
+                FontSize = 9,
+                TextWrapping = TextWrapping.Wrap,
+                TextTrimming = TextTrimming.CharacterEllipsis,
                 Foreground = B(Theme.Current.Mid),
                 VerticalAlignment = VerticalAlignment.Center
             });
             _rows.Children.Add(row);
+            _root.ToolTip = msg;
         }
 
         void AddPart(string shortLabel, string fullLabel, Limit d, List<string> tips)
@@ -1588,8 +1601,10 @@ namespace ClaudeWidgetApp
             {
                 string msg = _lastErr == null ? L.Loading : string.Format(L.Offline, _lastErr);
                 // Rate limited with nothing to show yet: the local feed is
-                // the way out, say so where the user is already looking.
-                if (_lastErrCode == 429) msg += "\n" + L.FeedHint;
+                // the way out, say so where the user is already looking -
+                // and say the truth when a foreign statusline blocks it.
+                if (_lastErrCode == 429)
+                    msg += "\n" + (Feed.Detect() == Feed.State.Foreign ? L.FeedHintBusy : L.FeedHint);
                 ShowMessage(msg);
             }
         }
