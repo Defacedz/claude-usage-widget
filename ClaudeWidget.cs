@@ -183,8 +183,14 @@ namespace ClaudeWidgetApp
         public string SourceFeed;       // tooltip line when the numbers came from the feed
         public string ErrRateLimited;   // friendlier than the raw HTTP 429 message
         public string ErrExpired;       // friendlier than the raw HTTP 401/403 message
-        public string FeedHint;         // appended to the offline message on HTTP 429/401
+        public string FeedHint;         // appended to the offline message on HTTP 429
         public string FeedHintBusy;     // same spot, when a foreign statusline blocks the feed
+        public string HintSignIn;       // appended on HTTP 401/403: the fix is one click away
+
+        public string MenuSignIn;       // context-menu entry and login window title
+        public string LoginExplain;     // what the browser + paste dance is about
+        public string LoginCancel;
+        public string LoginFailed;
     }
 
     public static class I18n
@@ -241,7 +247,12 @@ namespace ClaudeWidgetApp
                 ErrRateLimited = "API rate limited (429)",
                 ErrExpired = "Session expired",
                 FeedHint = "Restart Claude Code",
-                FeedHintBusy = "Statusline taken (see log)"
+                FeedHintBusy = "Statusline taken (see log)",
+                HintSignIn = "Right-click: Sign in to Claude",
+                MenuSignIn = "Sign in to Claude",
+                LoginExplain = "Your browser opens claude.ai.\nApprove, copy the code shown, paste it below.",
+                LoginCancel = "Cancel",
+                LoginFailed = "Sign-in failed - see log"
             };
         }
 
@@ -286,7 +297,12 @@ namespace ClaudeWidgetApp
                 ErrRateLimited = "API limitée (429)",
                 ErrExpired = "Session expirée",
                 FeedHint = "Relance Claude Code",
-                FeedHintBusy = "Statusline occupée (voir journal)"
+                FeedHintBusy = "Statusline occupée (voir journal)",
+                HintSignIn = "Clic droit : Se connecter à Claude",
+                MenuSignIn = "Se connecter à Claude",
+                LoginExplain = "Le navigateur ouvre claude.ai.\nAutorise, copie le code affiché, colle-le ci-dessous.",
+                LoginCancel = "Annuler",
+                LoginFailed = "Échec de connexion - voir journal"
             };
         }
 
@@ -331,7 +347,12 @@ namespace ClaudeWidgetApp
                 ErrRateLimited = "API limitada (429)",
                 ErrExpired = "Sesión caducada",
                 FeedHint = "Reinicie Claude Code",
-                FeedHintBusy = "Statusline ocupada (ver registro)"
+                FeedHintBusy = "Statusline ocupada (ver registro)",
+                HintSignIn = "Clic derecho: Iniciar sesión en Claude",
+                MenuSignIn = "Iniciar sesión en Claude",
+                LoginExplain = "El navegador abre claude.ai.\nAutorice, copie el código mostrado y péguelo abajo.",
+                LoginCancel = "Cancelar",
+                LoginFailed = "Error al iniciar sesión - ver registro"
             };
         }
 
@@ -376,7 +397,12 @@ namespace ClaudeWidgetApp
                 ErrRateLimited = "API begrenzt (429)",
                 ErrExpired = "Sitzung abgelaufen",
                 FeedHint = "Claude Code neu starten",
-                FeedHintBusy = "Statusline belegt (s. Protokoll)"
+                FeedHintBusy = "Statusline belegt (s. Protokoll)",
+                HintSignIn = "Rechtsklick: Bei Claude anmelden",
+                MenuSignIn = "Bei Claude anmelden",
+                LoginExplain = "Der Browser öffnet claude.ai.\nBestätigen, den angezeigten Code kopieren und unten einfügen.",
+                LoginCancel = "Abbrechen",
+                LoginFailed = "Anmeldung fehlgeschlagen - siehe Protokoll"
             };
         }
     }
@@ -431,7 +457,7 @@ namespace ClaudeWidgetApp
     {
         // Bump this when publishing: the update check compares it against the
         // same line in the repository's ClaudeWidget.cs.
-        public const string Version = "2026.09.10";
+        public const string Version = "2026.09.11";
         const string SourceUrl = "https://raw.githubusercontent.com/Defacedz/claude-usage-widget/main/ClaudeWidget.cs";
         public const string ArchiveUrl = "https://github.com/Defacedz/claude-usage-widget/archive/refs/heads/main.zip";
 
@@ -804,6 +830,96 @@ namespace ClaudeWidgetApp
                 if (u == null) throw new Exception(I18n.T.ErrBadResponse);
                 return u;
             }
+        }
+
+        // ---------- interactive sign-in (OAuth code flow with PKCE) ----------
+        // Same flow and same public client id as Claude Code's own /login,
+        // for people who use the desktop app and have no terminal: the
+        // browser opens claude.ai, the user approves, copies the code the
+        // callback page shows, and pastes it into the widget. No password
+        // ever passes through the widget; the resulting tokens land in the
+        // same .credentials.json Claude Code reads.
+        const string RedirectUri = "https://console.anthropic.com/oauth/code/callback";
+        static string _loginVerifier;
+
+        static string B64Url(byte[] b)
+        {
+            return Convert.ToBase64String(b).TrimEnd('=').Replace('+', '-').Replace('/', '_');
+        }
+
+        public static void BeginLogin()
+        {
+            var bytes = new byte[64];
+            using (var rng = new System.Security.Cryptography.RNGCryptoServiceProvider())
+                rng.GetBytes(bytes);
+            _loginVerifier = B64Url(bytes);
+            string challenge;
+            using (var sha = System.Security.Cryptography.SHA256.Create())
+                challenge = B64Url(sha.ComputeHash(Encoding.ASCII.GetBytes(_loginVerifier)));
+            string url = "https://claude.ai/oauth/authorize?code=true&client_id=" + ClientId +
+                         "&response_type=code" +
+                         "&redirect_uri=" + Uri.EscapeDataString(RedirectUri) +
+                         "&scope=" + Uri.EscapeDataString("org:create_api_key user:profile user:inference") +
+                         "&code_challenge=" + challenge + "&code_challenge_method=S256" +
+                         "&state=" + _loginVerifier;
+            System.Diagnostics.Process.Start(url);
+        }
+
+        public static bool FinishLogin(string pasted)
+        {
+            if (string.IsNullOrEmpty(_loginVerifier) || string.IsNullOrEmpty(pasted)) return false;
+            pasted = pasted.Trim();
+            // The callback page shows "code#state"; accept a bare code too.
+            string code = pasted, state = _loginVerifier;
+            int hash = pasted.IndexOf('#');
+            if (hash >= 0) { code = pasted.Substring(0, hash); state = pasted.Substring(hash + 1); }
+            string body = "{\"grant_type\":\"authorization_code\",\"code\":\"" + code +
+                          "\",\"redirect_uri\":\"" + RedirectUri +
+                          "\",\"client_id\":\"" + ClientId +
+                          "\",\"code_verifier\":\"" + _loginVerifier +
+                          "\",\"state\":\"" + state + "\"}";
+            foreach (string url in TokenUrls)
+            {
+                try
+                {
+                    var tr = Json.Read<TokenResp>(HttpPost(url, body, "application/json"));
+                    if (tr == null || string.IsNullOrEmpty(tr.access_token)) continue;
+                    var no = new Oauth
+                    {
+                        accessToken = tr.access_token,
+                        refreshToken = tr.refresh_token,
+                        expiresAt = NowMs() + tr.expires_in * 1000
+                    };
+                    Directory.CreateDirectory(CacheDir);
+                    File.WriteAllText(CachePath, Json.Write(no));
+                    if (File.Exists(CredPath)) WriteBackCredentials(no);
+                    else WriteFreshCredentials(no);
+                    Log("interactive sign-in OK via " + url);
+                    return true;
+                }
+                catch (WebException we)
+                {
+                    if (we.Response != null) we.Response.Close();
+                    Log("sign-in exchange failed (" + url + "): " + we.Status);
+                }
+                catch (Exception e) { Log("sign-in exchange failed (" + url + "): " + e.Message); }
+            }
+            return false;
+        }
+
+        static void WriteFreshCredentials(Oauth no)
+        {
+            try
+            {
+                Directory.CreateDirectory(System.IO.Path.GetDirectoryName(CredPath));
+                string json = "{\"claudeAiOauth\":{\"accessToken\":\"" + no.accessToken +
+                              "\",\"refreshToken\":\"" + no.refreshToken +
+                              "\",\"expiresAt\":" + no.expiresAt.ToString(CultureInfo.InvariantCulture) +
+                              ",\"scopes\":[\"user:inference\",\"user:profile\"]}}";
+                File.WriteAllText(CredPath, json, new UTF8Encoding(false));
+                Log("credentials file created");
+            }
+            catch (Exception e) { Log("credentials create failed: " + e.Message); }
         }
     }
 
@@ -1700,14 +1816,16 @@ namespace ClaudeWidgetApp
             else
             {
                 string msg = _lastErr == null ? L.Loading : string.Format(L.Offline, ErrText());
-                // Rate limited or signed out with nothing to show yet: a NEW
-                // Claude Code session is the way out of both - it loads the
-                // statusline, which pushes the numbers locally, no API and no
-                // valid token needed. Sessions already open never will: Claude
-                // Code only reads the statusline entry when a session starts.
-                // And say the truth when a foreign statusline blocks the feed.
-                if (_lastErrCode == 429 || _lastErrCode == 401 || _lastErrCode == 403)
+                // Say what to DO, per cause. Rate limited: a restarted Claude
+                // Code feeds the numbers locally (sessions already open never
+                // will - the statusline entry is only read at session start),
+                // unless a foreign statusline blocks the feed. Signed out:
+                // the built-in sign-in is one right-click away - desktop-app
+                // users have no terminal to run /login in.
+                if (_lastErrCode == 429)
                     msg += "\n" + (Feed.Detect() == Feed.State.Foreign ? L.FeedHintBusy : L.FeedHint);
+                else if (_lastErrCode == 401 || _lastErrCode == 403)
+                    msg += "\n" + L.HintSignIn;
                 ShowMessage(msg);
             }
         }
@@ -1820,6 +1938,63 @@ namespace ClaudeWidgetApp
                     Redraw();
                 }));
             });
+        }
+
+        // ---------- interactive sign-in ----------
+        // Opens the browser on claude.ai and a small paste box. Only ever
+        // shown on the user's explicit click; closing it changes nothing.
+        void ShowSignIn()
+        {
+            try { Api.BeginLogin(); }
+            catch (Exception e) { Api.Log("sign-in launch failed: " + e.Message); return; }
+
+            Theme th = Theme.Current;
+            var info = new TextBlock
+            {
+                Text = L.LoginExplain,
+                Foreground = B(th.Ink),
+                TextWrapping = TextWrapping.Wrap,
+                MaxWidth = 340
+            };
+            var box = new TextBox { FontSize = 12, Margin = new Thickness(0, 10, 0, 10), MinWidth = 340 };
+            var ok = new Button { Content = "OK", Width = 84, Margin = new Thickness(0, 0, 8, 0), IsDefault = true };
+            var cancel = new Button { Content = L.LoginCancel, Width = 84, IsCancel = true };
+            var btns = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
+            btns.Children.Add(ok);
+            btns.Children.Add(cancel);
+            var stack = new StackPanel { Margin = new Thickness(14) };
+            stack.Children.Add(info);
+            stack.Children.Add(box);
+            stack.Children.Add(btns);
+            var win = new Window
+            {
+                Title = L.MenuSignIn,
+                Content = new Border { Background = B(th.WinBg), Child = stack },
+                SizeToContent = SizeToContent.WidthAndHeight,
+                WindowStartupLocation = WindowStartupLocation.CenterScreen,
+                Topmost = true,
+                ResizeMode = ResizeMode.NoResize,
+                ShowInTaskbar = false
+            };
+            ok.Click += delegate
+            {
+                string pasted = box.Text;
+                win.Close();
+                ThreadPool.QueueUserWorkItem(delegate
+                {
+                    bool good = false;
+                    try { good = Api.FinishLogin(pasted); }
+                    catch (Exception e) { Api.Log("sign-in failed: " + e.Message); }
+                    Dispatcher.BeginInvoke(new Action(delegate
+                    {
+                        if (good) Refresh(true);
+                        else MessageBox.Show(L.LoginFailed, L.MenuSignIn);
+                    }));
+                });
+            };
+            cancel.Click += delegate { win.Close(); };
+            win.Loaded += delegate { box.Focus(); };
+            win.ShowDialog();
         }
 
         // ---------- update check ----------
@@ -2557,6 +2732,10 @@ namespace ClaudeWidgetApp
             var miDetail = new MenuItem { Header = L.MenuLocalDetail };
             miDetail.Click += delegate { ShowLocalDetail(); };
             menu.Items.Add(miDetail);
+
+            var miSign = new MenuItem { Header = L.MenuSignIn };
+            miSign.Click += delegate { ShowSignIn(); };
+            menu.Items.Add(miSign);
 
             var miRepl = new MenuItem { Header = L.MenuMoveBottomLeft };
             miRepl.Click += delegate
