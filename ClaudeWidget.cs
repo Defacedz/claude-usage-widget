@@ -467,7 +467,7 @@ namespace ClaudeWidgetApp
     {
         // Bump this when publishing: the update check compares it against the
         // same line in the repository's ClaudeWidget.cs.
-        public const string Version = "2026.09.14";
+        public const string Version = "2026.09.15";
         const string SourceUrl = "https://raw.githubusercontent.com/Defacedz/claude-usage-widget/main/ClaudeWidget.cs";
         public const string ArchiveUrl = "https://github.com/Defacedz/claude-usage-widget/archive/refs/heads/main.zip";
 
@@ -2104,7 +2104,22 @@ namespace ClaudeWidgetApp
                     catch (Exception e) { Api.Log("sign-in failed: " + e.Message); }
                     Dispatcher.BeginInvoke(new Action(delegate
                     {
-                        if (good) Refresh(true);
+                        if (good)
+                        {
+                            // Fresh credentials: every reason to wait is gone.
+                            // Without this reset the sign-in succeeded and the
+                            // widget still showed "session expired" until the
+                            // backoff expired - up to an hour later - because
+                            // the anti-burst guard swallowed the one refresh
+                            // that would have proved it worked.
+                            _apiStrikes = 0;
+                            _lastErrCode = 0;
+                            _lastErr = null;
+                            _lastApiCall = DateTime.MinValue;
+                            _nextApiAt = DateTime.MinValue;
+                            Redraw();
+                            Refresh(true);
+                        }
                         else MessageBox.Show(L.LoginFailed, L.MenuSignIn);
                     }));
                 });
