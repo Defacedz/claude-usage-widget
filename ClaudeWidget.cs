@@ -394,7 +394,7 @@ namespace ClaudeWidgetApp
     {
         // Bump this when publishing: the update check compares it against the
         // same line in the repository's ClaudeWidget.cs.
-        public const string Version = "2026.09.02";
+        public const string Version = "2026.09.03";
         const string SourceUrl = "https://raw.githubusercontent.com/Defacedz/claude-usage-widget/main/ClaudeWidget.cs";
         public const string WebInstall = "https://raw.githubusercontent.com/Defacedz/claude-usage-widget/main/web-install.ps1";
 
@@ -1459,7 +1459,9 @@ namespace ClaudeWidgetApp
         {
             _rows.Children.Clear();
             _rows.Opacity = 1.0;
-            _root.BorderBrush = B(Theme.Current.Border);
+            // Same rule as Render(): an available update owns the border,
+            // even (especially) when there is nothing else to show.
+            _root.BorderBrush = B(_updateAvailable ? "#CCDA7756" : Theme.Current.Border);
             // A Grid centres the text properly; a bare TextBlock in a
             // StackPanel would sit at the top of the 36px band.
             var row = new Grid { Height = 36 };
@@ -1565,14 +1567,16 @@ namespace ClaudeWidgetApp
                 // more, so we fade them out to make the stall visible.
                 TimeSpan age = DateTime.Now - _lastTs;
                 bool stale = age.TotalMinutes >= 12;
-                _root.BorderBrush = B(stale ? "#CCE05252" : "#99E8A33D");
+                // An available update outranks the failure colour: the person
+                // who most needs to see it is exactly the one whose widget is
+                // broken (the 2026-08 rate-limit wave proved it). The fade and
+                // the tooltip keep saying the data is stale.
+                _root.BorderBrush = B(_updateAvailable ? "#CCDA7756" : (stale ? "#CCE05252" : "#99E8A33D"));
                 _rows.Opacity = stale ? 0.45 : 1.0;
                 tips.Add(string.Format(L.FrozenFor, FmtAge(age), _lastErr));
             }
             else
             {
-                // Data freshness owns the border when something is wrong;
-                // otherwise an available update paints it Claude-orange.
                 _root.BorderBrush = B(_updateAvailable ? "#CCDA7756" : Theme.Current.Border);
                 _rows.Opacity = 1.0;
             }
