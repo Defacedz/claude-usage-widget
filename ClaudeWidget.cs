@@ -186,6 +186,8 @@ namespace ClaudeWidgetApp
         public string FeedHint;         // appended to the offline message on HTTP 429
         public string FeedHintBusy;     // same spot, when a foreign statusline blocks the feed
         public string HintSignIn;       // appended on HTTP 401/403: the fix is one click away
+        public string HintRetryIn;      // {0} = delay - shown under a 429: it heals by waiting
+        public string LoginThrottled;   // sign-in refused while the IP is throttled
 
         public string MenuSignIn;       // context-menu entry and login window title
         public string LoginExplain;     // what the browser + paste dance is about
@@ -249,6 +251,8 @@ namespace ClaudeWidgetApp
                 FeedHint = "Restart Claude Code",
                 FeedHintBusy = "Statusline taken (see log)",
                 HintSignIn = "Right-click: Sign in to Claude",
+                HintRetryIn = "auto-retry in {0}",
+                LoginThrottled = "Anthropic is throttling this network.\nSign-in will work again in {0}.",
                 MenuSignIn = "Sign in to Claude",
                 LoginExplain = "Your browser opens claude.ai.\nApprove, copy the code shown, paste it below.",
                 LoginCancel = "Cancel",
@@ -299,6 +303,8 @@ namespace ClaudeWidgetApp
                 FeedHint = "Relance Claude Code",
                 FeedHintBusy = "Statusline occupée (voir journal)",
                 HintSignIn = "Clic droit : Se connecter à Claude",
+                HintRetryIn = "réessai auto dans {0}",
+                LoginThrottled = "Anthropic limite ce réseau.\nLa connexion refonctionnera dans {0}.",
                 MenuSignIn = "Se connecter à Claude",
                 LoginExplain = "Le navigateur ouvre claude.ai.\nAutorise, copie le code affiché, colle-le ci-dessous.",
                 LoginCancel = "Annuler",
@@ -349,6 +355,8 @@ namespace ClaudeWidgetApp
                 FeedHint = "Reinicie Claude Code",
                 FeedHintBusy = "Statusline ocupada (ver registro)",
                 HintSignIn = "Clic derecho: Iniciar sesión en Claude",
+                HintRetryIn = "reintento automático en {0}",
+                LoginThrottled = "Anthropic está limitando esta red.\nEl inicio de sesión funcionará en {0}.",
                 MenuSignIn = "Iniciar sesión en Claude",
                 LoginExplain = "El navegador abre claude.ai.\nAutorice, copie el código mostrado y péguelo abajo.",
                 LoginCancel = "Cancelar",
@@ -399,6 +407,8 @@ namespace ClaudeWidgetApp
                 FeedHint = "Claude Code neu starten",
                 FeedHintBusy = "Statusline belegt (s. Protokoll)",
                 HintSignIn = "Rechtsklick: Bei Claude anmelden",
+                HintRetryIn = "automatischer Neuversuch in {0}",
+                LoginThrottled = "Anthropic drosselt dieses Netzwerk.\nDie Anmeldung funktioniert in {0} wieder.",
                 MenuSignIn = "Bei Claude anmelden",
                 LoginExplain = "Der Browser öffnet claude.ai.\nBestätigen, den angezeigten Code kopieren und unten einfügen.",
                 LoginCancel = "Abbrechen",
@@ -457,7 +467,7 @@ namespace ClaudeWidgetApp
     {
         // Bump this when publishing: the update check compares it against the
         // same line in the repository's ClaudeWidget.cs.
-        public const string Version = "2026.09.12";
+        public const string Version = "2026.09.13";
         const string SourceUrl = "https://raw.githubusercontent.com/Defacedz/claude-usage-widget/main/ClaudeWidget.cs";
         public const string ArchiveUrl = "https://github.com/Defacedz/claude-usage-widget/archive/refs/heads/main.zip";
 
@@ -663,6 +673,13 @@ namespace ClaudeWidgetApp
             return cache.expiresAt > cc.expiresAt ? cache : cc;
         }
 
+        // Set by every failing OAuth POST so callers can tell "the server is
+        // throttling this IP" (429) from "this token is dead" (400/401).
+        // WebExceptionStatus alone said "ProtocolError" for both, which is
+        // how a throttled machine ended up being told to sign in - and the
+        // sign-in then failed for the very same reason.
+        public static int LastOauthStatus;
+
         static string HttpPost(string url, string body, string contentType)
         {
             var req = NewRequest(url);
@@ -716,15 +733,29 @@ namespace ClaudeWidgetApp
                     }
                     catch (WebException we)
                     {
+                        var hr = we.Response as HttpWebResponse;
+                        int st = hr == null ? 0 : (int)hr.StatusCode;
+                        LastOauthStatus = st;
                         // without Close() the connection stays held by the ServicePoint
                         if (we.Response != null) we.Response.Close();
-                        Log("token refresh failed (" + url + "): " + we.Status);
+                        Log("token refresh failed (" + url + "): " +
+                            (st != 0 ? "HTTP " + st : we.Status.ToString()));
+                        // Throttled: every extra host and body format is one
+                        // more request against an IP that is already being
+                        // told to stop. Give up the whole round at once.
+                        if (st == 429) throw new RateLimitedException();
                     }
                     catch (Exception e) { Log("token refresh failed (" + url + "): " + e.Message); }
                 }
             }
-            return o.accessToken; // last resort
+            // Refresh did not succeed. Returning the expired token would buy
+            // one guaranteed-failing usage call per cycle - more noise on a
+            // throttled IP, and a misleading error on screen. Say it plainly.
+            throw new SignedOutException();
         }
+
+        public class RateLimitedException : Exception { }
+        public class SignedOutException : Exception { }
 
         // Call from a worker thread. Any failure means "no update": the check
         // must never break a widget that only wants to show gauges.
@@ -1831,7 +1862,14 @@ namespace ClaudeWidgetApp
                 // the built-in sign-in is one right-click away - desktop-app
                 // users have no terminal to run /login in.
                 if (_lastErrCode == 429)
-                    msg += "\n" + (Feed.Detect() == Feed.State.Foreign ? L.FeedHintBusy : L.FeedHint);
+                {
+                    // Throttled: there is NOTHING the user can do, and saying
+                    // otherwise sends them chasing their tail. State the one
+                    // true fact - the widget retries by itself, at this time.
+                    TimeSpan left = _nextApiAt - DateTime.Now;
+                    msg += "\n" + string.Format(L.HintRetryIn,
+                        left.TotalSeconds > 0 ? FmtAge(left) : "<1 min");
+                }
                 else if (_lastErrCode == 401 || _lastErrCode == 403)
                     msg += "\n" + L.HintSignIn;
                 ShowMessage(msg);
@@ -1892,11 +1930,14 @@ namespace ClaudeWidgetApp
 
                 u = Feed.TryRead(out feedTs);
                 if (u != null) viaFeed = true;
-                // A forced refresh (menu click) jumps the backoff queue, but
-                // never closer than 30s to the previous call: rage-clicking
-                // with a dead token is how an IP earns itself a 429 throttle.
-                else if ((force && (DateTime.Now - _lastApiCall).TotalSeconds >= 30) ||
-                         (!force && DateTime.Now >= _nextApiAt))
+                // A forced refresh (menu click) jumps the backoff queue - but
+                // NEVER while the server is throttling this IP. Clicking
+                // Refresh under a 429 is what keeps the throttle alive, so
+                // the click is honoured by showing the countdown instead of
+                // by sending a request. Outside a throttle, a forced call
+                // still stays 30s away from the previous one.
+                else if ((force && _lastErrCode != 429 && (DateTime.Now - _lastApiCall).TotalSeconds >= 30) ||
+                         (DateTime.Now >= _nextApiAt))
                 {
                     _lastApiCall = DateTime.Now;
                     try { u = Api.GetUsage(); }
@@ -1912,6 +1953,8 @@ namespace ClaudeWidgetApp
                         // one language, half another.
                         err = we.Message;
                     }
+                    catch (Api.RateLimitedException) { code = 429; err = I18n.T.ErrRateLimited; }
+                    catch (Api.SignedOutException) { code = 401; err = I18n.T.ErrExpired; }
                     catch (Exception e) { err = e.Message; }
                 }
                 else { _refreshBusy = false; return; }   // between API slots, nothing to do
@@ -1959,6 +2002,16 @@ namespace ClaudeWidgetApp
         // closing it changes nothing. openBrowser=false is for previews.
         void ShowSignIn(bool openBrowser)
         {
+            // The OAuth token host is throttled per IP just like the usage
+            // endpoint, so a sign-in attempted under a 429 cannot succeed -
+            // it used to send the user to the browser only to fail on paste.
+            // Refuse up front and say when it will work.
+            if (openBrowser && _lastErrCode == 429 && DateTime.Now < _nextApiAt)
+            {
+                MessageBox.Show(string.Format(L.LoginThrottled, FmtAge(_nextApiAt - DateTime.Now)),
+                                L.MenuSignIn);
+                return;
+            }
             if (openBrowser)
             {
                 try { Api.BeginLogin(); }
