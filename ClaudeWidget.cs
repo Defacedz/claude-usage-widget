@@ -174,6 +174,13 @@ namespace ClaudeWidgetApp
         public string DetailNote;
 
         public string ErrNotSignedIn, ErrBadResponse;
+
+        public string MenuFeed;         // context-menu toggle for the local feed
+        public string MenuFeedBusy;     // shown instead when another tool owns the statusline
+        public string MenuFeedTip;      // tooltip explaining what enabling does
+        public string SourceFeed;       // tooltip line when the numbers came from the feed
+        public string ErrRateLimited;   // friendlier than the raw HTTP 429 message
+        public string FeedHint;         // appended to the offline message on HTTP 429
     }
 
     public static class I18n
@@ -225,7 +232,13 @@ namespace ClaudeWidgetApp
                 DetailScanning = "scanning transcripts...",
                 DetailNote = "Counted from the local Claude Code transcripts: sent + produced + cache-written tokens. Context re-reads are excluded - they barely count toward the limit.",
                 ErrNotSignedIn = "Claude Code is not signed in (run it once)",
-                ErrBadResponse = "Unreadable API response"
+                ErrBadResponse = "Unreadable API response",
+                MenuFeed = "Local feed via Claude Code",
+                MenuFeedBusy = "Local feed: statusline already in use",
+                MenuFeedTip = "Reads the limits Claude Code pushes locally instead of polling the API.\nWrites the statusLine entry of ~/.claude/settings.json (reversible here);\nin return your terminal gains a usage status line.",
+                SourceFeed = "source: Claude Code (local feed)",
+                ErrRateLimited = "rate limited by Anthropic, retrying later",
+                FeedHint = "Tip: enable the local feed (right-click)"
             };
         }
 
@@ -265,7 +278,13 @@ namespace ClaudeWidgetApp
                 DetailScanning = "analyse des conversations...",
                 DetailNote = "Compté depuis les conversations locales de Claude Code : tokens envoyés + produits + écrits en cache. Les relectures de contexte sont exclues - elles ne pèsent presque pas sur la limite.",
                 ErrNotSignedIn = "Claude Code n'est pas connecté (lance-le une fois)",
-                ErrBadResponse = "Réponse de l'API illisible"
+                ErrBadResponse = "Réponse de l'API illisible",
+                MenuFeed = "Flux local via Claude Code",
+                MenuFeedBusy = "Flux local : statusline déjà occupée",
+                MenuFeedTip = "Lit les limites que Claude Code pousse localement au lieu d'interroger l'API.\nÉcrit l'entrée statusLine de ~/.claude/settings.json (réversible ici) ;\nen échange le terminal gagne une ligne d'état avec la conso.",
+                SourceFeed = "source : Claude Code (flux local)",
+                ErrRateLimited = "limité par Anthropic, nouvel essai plus tard",
+                FeedHint = "Astuce : activer le flux local (clic droit)"
             };
         }
 
@@ -305,7 +324,13 @@ namespace ClaudeWidgetApp
                 DetailScanning = "analizando conversaciones...",
                 DetailNote = "Contado desde las conversaciones locales de Claude Code: tokens enviados + producidos + escritos en caché. Las relecturas de contexto quedan fuera - apenas cuentan para el límite.",
                 ErrNotSignedIn = "Claude Code no ha iniciado sesión (ejecútalo una vez)",
-                ErrBadResponse = "Respuesta de la API ilegible"
+                ErrBadResponse = "Respuesta de la API ilegible",
+                MenuFeed = "Fuente local vía Claude Code",
+                MenuFeedBusy = "Fuente local: statusline ya en uso",
+                MenuFeedTip = "Lee los límites que Claude Code publica localmente en lugar de consultar la API.\nEscribe la entrada statusLine de ~/.claude/settings.json (reversible aquí);\na cambio la terminal gana una línea de estado con el uso.",
+                SourceFeed = "fuente: Claude Code (local)",
+                ErrRateLimited = "limitado por Anthropic, se reintentará más tarde",
+                FeedHint = "Consejo: active la fuente local (clic derecho)"
             };
         }
 
@@ -345,7 +370,13 @@ namespace ClaudeWidgetApp
                 DetailScanning = "Analyse der Unterhaltungen...",
                 DetailNote = "Gezählt aus den lokalen Claude-Code-Unterhaltungen: gesendete + erzeugte + in den Cache geschriebene Tokens. Erneut gelesener Kontext zählt nicht - er wiegt kaum auf dem Limit.",
                 ErrNotSignedIn = "Claude Code ist nicht angemeldet (einmal starten)",
-                ErrBadResponse = "Unlesbare API-Antwort"
+                ErrBadResponse = "Unlesbare API-Antwort",
+                MenuFeed = "Lokale Quelle über Claude Code",
+                MenuFeedBusy = "Lokale Quelle: Statusline bereits belegt",
+                MenuFeedTip = "Liest die Limits, die Claude Code lokal liefert, statt die API abzufragen.\nSchreibt den statusLine-Eintrag in ~/.claude/settings.json (hier umkehrbar);\ndafür erhält das Terminal eine Statuszeile mit der Nutzung.",
+                SourceFeed = "Quelle: Claude Code (lokal)",
+                ErrRateLimited = "von Anthropic begrenzt, späterer Versuch",
+                FeedHint = "Tipp: lokale Quelle aktivieren (Rechtsklick)"
             };
         }
     }
@@ -378,7 +409,7 @@ namespace ClaudeWidgetApp
     {
         // Bump this when publishing: the update check compares it against the
         // same line in the repository's ClaudeWidget.cs.
-        public const string Version = "2026.08.31";
+        public const string Version = "2026.09.01";
         const string SourceUrl = "https://raw.githubusercontent.com/Defacedz/claude-usage-widget/main/ClaudeWidget.cs";
         public const string WebInstall = "https://raw.githubusercontent.com/Defacedz/claude-usage-widget/main/web-install.ps1";
 
@@ -707,6 +738,286 @@ namespace ClaudeWidgetApp
         }
     }
 
+    // ---------- local feed (Claude Code statusline) ----------
+    // Claude Code pushes a JSON blob to the configured statusLine command on
+    // every turn; for Claude.ai subscribers it carries the same five_hour /
+    // seven_day numbers as the usage endpoint - pushed locally, no HTTP, no
+    // rate limit. Since the endpoint started answering 429 (2026-08), this is
+    // the primary source; the API poll is the fallback for when Claude Code
+    // is closed.
+    // Enabling writes our exe as the statusLine command of
+    // ~/.claude/settings.json - opt-in from the context menu, reversible, and
+    // it refuses to overwrite a statusline configured by something else.
+    // Claude Code renders whatever the command prints, so running as the
+    // statusline also has to LEAVE a status line: we print the usage summary,
+    // and the terminal gains a statusline out of the deal.
+    [DataContract] public class SlLimit
+    {
+        [DataMember] public double? used_percentage;
+        [DataMember] public double? utilization;    // older builds used this name
+        [DataMember] public long? resets_at;        // unix epoch seconds, not ISO-8601
+    }
+    [DataContract] public class SlRateLimits
+    {
+        [DataMember] public SlLimit five_hour;
+        [DataMember] public SlLimit seven_day;
+    }
+    [DataContract] public class SlModel { [DataMember] public string display_name; }
+    [DataContract] public class SlBlob
+    {
+        [DataMember] public SlRateLimits rate_limits;
+        [DataMember] public SlModel model;
+    }
+
+    public static class Feed
+    {
+        public static string SettingsPath
+        {
+            get { return System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".claude\\settings.json"); }
+        }
+        static string Dir
+        {
+            get { return System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "ClaudeWidget"); }
+        }
+        static string FeedPath { get { return System.IO.Path.Combine(Dir, "feed.json"); } }
+
+        // Data older than this is ignored: Claude Code is closed or idle, and
+        // the API poll takes over again.
+        const int FreshMinutes = 10;
+
+        public enum State { Off, Ours, Foreign }
+
+        // Locate the "statusLine" value object by counting braces. Braces
+        // inside quoted strings would fool the count; a command line weird
+        // enough to contain one reads as Foreign, which only disables our
+        // toggle - never breaks the file.
+        static string StatusLineBlock(string json, out int start, out int end)
+        {
+            start = end = -1;
+            int p = json.IndexOf("\"statusLine\"", StringComparison.Ordinal);
+            if (p < 0) return null;
+            int a = json.IndexOf('{', p);
+            if (a < 0) return null;
+            int depth = 0;
+            for (int i = a; i < json.Length; i++)
+            {
+                if (json[i] == '{') depth++;
+                else if (json[i] == '}' && --depth == 0)
+                {
+                    start = p; end = i + 1;
+                    return json.Substring(p, end - p);
+                }
+            }
+            return null;
+        }
+
+        public static State Detect()
+        {
+            try
+            {
+                if (!File.Exists(SettingsPath)) return State.Off;
+                int s, e;
+                string block = StatusLineBlock(File.ReadAllText(SettingsPath), out s, out e);
+                if (block == null) return State.Off;
+                return block.IndexOf("ClaudeWidget", StringComparison.OrdinalIgnoreCase) >= 0
+                    ? State.Ours : State.Foreign;
+            }
+            catch { return State.Off; }
+        }
+
+        // The settings file belongs to Claude Code and carries keys we know
+        // nothing about (hooks, plugins, permissions...), so we splice text in
+        // place instead of re-serializing - same reasoning as
+        // Api.WriteBackCredentials. A pristine copy is kept next to the file.
+        public static bool Enable()
+        {
+            try
+            {
+                State st = Detect();
+                if (st == State.Foreign) return false;
+                if (st == State.Ours) return true;
+
+                string exe = System.Reflection.Assembly.GetExecutingAssembly().Location;
+                string entry = "\"statusLine\": {\"type\": \"command\", \"command\": \"\\\"" +
+                               exe.Replace("\\", "\\\\") + "\\\" --feed\", \"padding\": 0}";
+
+                string json = File.Exists(SettingsPath) ? File.ReadAllText(SettingsPath) : "";
+                string upd;
+                int brace = json.IndexOf('{');
+                if (brace < 0) upd = "{\n  " + entry + "\n}\n";
+                else
+                {
+                    int q = brace + 1;
+                    while (q < json.Length && char.IsWhiteSpace(json[q])) q++;
+                    bool empty = q < json.Length && json[q] == '}';
+                    upd = json.Substring(0, brace + 1) +
+                          "\n  " + entry + (empty ? "\n" : ",") +
+                          json.Substring(brace + 1);
+                }
+                WriteSettings(json, upd);
+                Api.Log("local feed enabled (statusLine written)");
+                return true;
+            }
+            catch (Exception e) { Api.Log("feed enable failed: " + e.Message); return false; }
+        }
+
+        public static bool Disable()
+        {
+            try
+            {
+                if (Detect() != State.Ours) return false;
+                string json = File.ReadAllText(SettingsPath);
+                int s, e;
+                if (StatusLineBlock(json, out s, out e) == null) return false;
+
+                // Swallow the comma that tied the entry to its neighbour -
+                // after it if there is one, otherwise before.
+                int e2 = e;
+                while (e2 < json.Length && char.IsWhiteSpace(json[e2])) e2++;
+                if (e2 < json.Length && json[e2] == ',') e = e2 + 1;
+                else
+                {
+                    int s2 = s - 1;
+                    while (s2 >= 0 && char.IsWhiteSpace(json[s2])) s2--;
+                    if (s2 >= 0 && json[s2] == ',') s = s2;
+                }
+                WriteSettings(json, json.Substring(0, s) + json.Substring(e));
+                try { File.Delete(FeedPath); } catch { }
+                Api.Log("local feed disabled (statusLine removed)");
+                return true;
+            }
+            catch (Exception e) { Api.Log("feed disable failed: " + e.Message); return false; }
+        }
+
+        static void WriteSettings(string original, string updated)
+        {
+            // One-shot pristine backup, then the same atomic swap as the
+            // credentials write-back. The backup is kept on purpose.
+            string bak = SettingsPath + ".widget.bak";
+            try { if (File.Exists(SettingsPath) && !File.Exists(bak)) File.WriteAllText(bak, original, new UTF8Encoding(false)); } catch { }
+            string tmp = SettingsPath + ".widget.tmp";
+            File.WriteAllText(tmp, updated, new UTF8Encoding(false));
+            if (File.Exists(SettingsPath))
+            {
+                string swap = SettingsPath + ".widget.old";
+                try { File.Replace(tmp, SettingsPath, swap); try { File.Delete(swap); } catch { } }
+                catch { File.Copy(tmp, SettingsPath, true); try { File.Delete(tmp); } catch { } }
+            }
+            else File.Move(tmp, SettingsPath);
+        }
+
+        // Widget side: the parked numbers, or null when absent or stale.
+        public static Usage TryRead(out DateTime stamp)
+        {
+            stamp = DateTime.MinValue;
+            try
+            {
+                if (!File.Exists(FeedPath)) return null;
+                DateTime w = File.GetLastWriteTime(FeedPath);
+                if ((DateTime.Now - w).TotalMinutes > FreshMinutes) return null;
+                var u = Json.Read<Usage>(File.ReadAllText(FeedPath));
+                if (u == null || (u.five_hour == null && u.seven_day == null)) return null;
+                stamp = w;
+                return u;
+            }
+            catch { return null; }
+        }
+
+        static Limit Convert(SlLimit s)
+        {
+            if (s == null) return null;
+            double? pct = s.used_percentage.HasValue ? s.used_percentage : s.utilization;
+            if (!pct.HasValue) return null;
+            var l = new Limit { utilization = pct };
+            if (s.resets_at.HasValue && s.resets_at.Value > 0)
+                l.resets_at = DateTimeOffset.FromUnixTimeSeconds(s.resets_at.Value)
+                                            .ToString("o", CultureInfo.InvariantCulture);
+            return l;
+        }
+
+        // --feed mode: consume the pushed blob on stdin, park the numbers in
+        // the widget's own Usage shape, print a status line. Never throws:
+        // a crash here would surface as an error in the user's terminal.
+        public static int RunAsStatusLine()
+        {
+            string input = "";
+            try { input = Console.In.ReadToEnd(); } catch { }
+            var blob = Json.Read<SlBlob>(input);
+
+            Usage u = null;
+            if (blob != null && blob.rate_limits != null)
+            {
+                u = new Usage
+                {
+                    five_hour = Convert(blob.rate_limits.five_hour),
+                    seven_day = Convert(blob.rate_limits.seven_day)
+                };
+                if (u.five_hour == null && u.seven_day == null) u = null;
+            }
+            if (u != null)
+            {
+                try
+                {
+                    Directory.CreateDirectory(Dir);
+                    string tmp = FeedPath + ".tmp";
+                    string old = FeedPath + ".old";
+                    File.WriteAllText(tmp, Json.Write(u), new UTF8Encoding(false));
+                    if (File.Exists(FeedPath))
+                    {
+                        try { File.Replace(tmp, FeedPath, old); try { File.Delete(old); } catch { } }
+                        catch { File.Copy(tmp, FeedPath, true); try { File.Delete(tmp); } catch { } }
+                    }
+                    else File.Move(tmp, FeedPath);
+                }
+                catch { }
+            }
+
+            // Labels in the widget's configured language.
+            try
+            {
+                string cfgPath = System.IO.Path.Combine(Dir, "config.json");
+                if (File.Exists(cfgPath))
+                {
+                    var cfg = Json.Read<Config>(File.ReadAllText(cfgPath));
+                    if (cfg != null) I18n.Use(cfg.Lang);
+                }
+            }
+            catch { }
+
+            var sb = new StringBuilder();
+            if (blob != null && blob.model != null && !string.IsNullOrEmpty(blob.model.display_name))
+                sb.Append(blob.model.display_name).Append("  ");
+            bool any = false;
+            if (u != null)
+            {
+                Limit[] parts = { u.five_hour, u.seven_day };
+                string[] labels = { I18n.T.Short5h, I18n.T.Short7d };
+                for (int i = 0; i < parts.Length; i++)
+                {
+                    if (parts[i] == null || !parts[i].utilization.HasValue) continue;
+                    if (any) sb.Append(" | ");
+                    sb.Append(labels[i]).Append(' ')
+                      .Append(((int)Math.Round(parts[i].utilization.Value)).ToString(CultureInfo.InvariantCulture))
+                      .Append('%');
+                    any = true;
+                }
+            }
+            if (!any && sb.Length == 0) sb.Append("ClaudeWidget");
+
+            try
+            {
+                // Console.Out on a windowless exe: fine when the parent
+                // redirected stdout (Claude Code does), silently absent when
+                // launched by hand. UTF-8, no BOM: the terminal renders it raw.
+                var stdout = new StreamWriter(Console.OpenStandardOutput(), new UTF8Encoding(false));
+                stdout.Write(sb.ToString());
+                stdout.Flush();
+            }
+            catch { }
+            return 0;
+        }
+    }
+
     // ---------- local usage (read from Claude Code's own transcripts) ----------
     // Claude Code keeps one JSONL file per conversation under
     // ~/.claude/projects/<project>/<session>.jsonl; every assistant line
@@ -832,6 +1143,15 @@ namespace ClaudeWidgetApp
         MenuItem[] _opaItems;
         DispatcherTimer _poll;
 
+        // Fallback pacing: the timer ticks every minute (checking the feed
+        // file costs nothing), but the API is only called when the clock
+        // reaches _nextApiAt - pushed further out on each 429.
+        DateTime _nextApiAt = DateTime.MinValue;
+        int _apiStrikes;
+        bool _refreshBusy;
+        bool _viaFeed;
+        int _lastErrCode;
+
         static Strings L { get { return I18n.T; } }
 
         // Width reserved for the logo; the rows keep the same total width as
@@ -929,9 +1249,11 @@ namespace ClaudeWidgetApp
             {
                 _hwnd = new System.Windows.Interop.WindowInteropHelper(this).Handle;
                 ApplyPos();
-                Refresh();
-                _poll = new DispatcherTimer { Interval = TimeSpan.FromMinutes(5) };
-                _poll.Tick += delegate { Refresh(); };
+                Refresh(false);
+                // One-minute tick: the feed check is a local file stat, and
+                // the API call inside is gated by _nextApiAt anyway.
+                _poll = new DispatcherTimer { Interval = TimeSpan.FromMinutes(1) };
+                _poll.Tick += delegate { Refresh(false); };
                 _poll.Start();
                 var t2 = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(500) };
                 t2.Tick += delegate { AssertTop(); };
@@ -1200,7 +1522,15 @@ namespace ClaudeWidgetApp
         void Redraw()
         {
             if (_last != null) Render();
-            else ShowMessage(_lastErr == null ? L.Loading : string.Format(L.Offline, _lastErr));
+            else
+            {
+                string msg = _lastErr == null ? L.Loading : string.Format(L.Offline, _lastErr);
+                // Rate limited with nothing to show yet: the local feed is
+                // the way out, say so where the user is already looking.
+                if (_lastErrCode == 429 && Feed.Detect() != Feed.State.Ours)
+                    msg += "\n" + L.FeedHint;
+                ShowMessage(msg);
+            }
         }
 
         void Render()
@@ -1211,6 +1541,7 @@ namespace ClaudeWidgetApp
             AddPart(L.Short5h, L.Session5h, _last.five_hour, tips);
             AddPart(L.Short7d, L.Week, _last.seven_day, tips);
             tips.Add(string.Format(L.Updated, _lastTs.ToString("HH:mm")));
+            if (_viaFeed) tips.Add(L.SourceFeed);
             if (_lastErr != null)
             {
                 // Past two missed cycles the numbers on screen mean nothing any
@@ -1232,33 +1563,72 @@ namespace ClaudeWidgetApp
             _root.ToolTip = string.Join(Environment.NewLine, tips.ToArray());
         }
 
-        void Refresh()
+        // Two sources, in order: the numbers Claude Code pushes locally to
+        // the statusline (fresh, free, no rate limit - see Feed), then the
+        // usage endpoint. The endpoint started answering 429 in 2026-08, and
+        // the old reaction - tightening the poll from five minutes to one -
+        // dug the hole deeper. Now a 429 backs off instead: 10, 20, 40, then
+        // 60 minutes, until a call succeeds. The one-minute retry survives
+        // only for network failures, where it costs nothing remote and
+        // recovers fast after a wake from sleep.
+        void Refresh(bool force)
         {
+            if (_refreshBusy) return;
+            _refreshBusy = true;
             ThreadPool.QueueUserWorkItem(delegate
             {
                 Usage u = null;
                 string err = null;
-                try { u = Api.GetUsage(); }
-                catch (Exception e) { err = e.Message; }
+                int code = 0;
+                bool viaFeed = false;
+                DateTime feedTs;
+
+                u = Feed.TryRead(out feedTs);
+                if (u != null) viaFeed = true;
+                else if (force || DateTime.Now >= _nextApiAt)
+                {
+                    try { u = Api.GetUsage(); }
+                    catch (WebException we)
+                    {
+                        var hr = we.Response as HttpWebResponse;
+                        code = hr == null ? 0 : (int)hr.StatusCode;
+                        if (hr != null) hr.Close();
+                        err = code == 429 ? I18n.T.ErrRateLimited : we.Message;
+                    }
+                    catch (Exception e) { err = e.Message; }
+                }
+                else { _refreshBusy = false; return; }   // between API slots, nothing to do
+
                 Dispatcher.BeginInvoke(new Action(delegate
                 {
+                    _refreshBusy = false;
                     if (u != null)
                     {
                         if (_lastErr != null) Api.Log("refresh recovered");
-                        _last = u; _lastTs = DateTime.Now; _lastErr = null;
+                        if (viaFeed != _viaFeed)
+                            Api.Log("usage source: " + (viaFeed ? "local feed" : "API"));
+                        _viaFeed = viaFeed;
+                        _last = u;
+                        _lastTs = viaFeed ? feedTs : DateTime.Now;
+                        _lastErr = null; _lastErrCode = 0;
+                        _apiStrikes = 0;
+                        _nextApiAt = DateTime.Now + TimeSpan.FromMinutes(5);
                     }
                     else
                     {
-                        Api.Log("refresh failed: " + err);
-                        _lastErr = err;
+                        Api.Log("refresh failed: " + err + (code != 0 ? " (HTTP " + code + ")" : ""));
+                        _lastErr = err; _lastErrCode = code;
+                        TimeSpan delay;
+                        if (code == 429)
+                        {
+                            _apiStrikes = Math.Min(_apiStrikes + 1, 4);
+                            delay = TimeSpan.FromMinutes(Math.Min(60, 5 * (1 << _apiStrikes)));
+                        }
+                        else if (code == 0) delay = TimeSpan.FromMinutes(1);
+                        else delay = TimeSpan.FromMinutes(5);
+                        _nextApiAt = DateTime.Now + delay;
                     }
                     Redraw();
-                    // while broken, poll every minute instead of every five
-                    if (_poll != null)
-                    {
-                        var wanted = (err == null) ? TimeSpan.FromMinutes(5) : TimeSpan.FromMinutes(1);
-                        if (_poll.Interval != wanted) _poll.Interval = wanted;
-                    }
                 }));
             });
         }
@@ -1969,12 +2339,33 @@ namespace ClaudeWidgetApp
             // repository whether a newer version is out - otherwise the update
             // entry only appears on the six-hourly timer.
             var miR = new MenuItem { Header = L.MenuRefresh };
-            miR.Click += delegate { Refresh(); CheckUpdate(); };
+            miR.Click += delegate { Refresh(true); CheckUpdate(); };
             menu.Items.Add(miR);
 
             var miDetail = new MenuItem { Header = L.MenuLocalDetail };
             miDetail.Click += delegate { ShowLocalDetail(); };
             menu.Items.Add(miDetail);
+
+            // Local feed toggle. Greyed out when another tool already owns
+            // the statusline: we will not overwrite somebody else's entry.
+            var feedState = Feed.State.Off;
+            try { feedState = Feed.Detect(); } catch { }
+            var miFeed = new MenuItem
+            {
+                Header = feedState == Feed.State.Foreign ? L.MenuFeedBusy : L.MenuFeed,
+                IsCheckable = true,
+                IsChecked = feedState == Feed.State.Ours,
+                IsEnabled = feedState != Feed.State.Foreign,
+                ToolTip = L.MenuFeedTip
+            };
+            miFeed.Click += delegate
+            {
+                bool ok = Feed.Detect() == Feed.State.Ours ? Feed.Disable() : Feed.Enable();
+                if (!ok) Api.Log("feed toggle refused (foreign statusline or write failure)");
+                BuildMenu();        // reflect the new state
+                Refresh(true);
+            };
+            menu.Items.Add(miFeed);
 
             var miRepl = new MenuItem { Header = L.MenuMoveBottomLeft };
             miRepl.Click += delegate
@@ -2133,6 +2524,12 @@ namespace ClaudeWidgetApp
         [STAThread]
         public static void Main()
         {
+            // --feed: we are Claude Code's statusline command, not the
+            // widget. Handled before the single-instance sweep below - the
+            // helper is spawned on every turn and must never kill the widget.
+            foreach (string a in Environment.GetCommandLineArgs())
+                if (a == "--feed") Environment.Exit(Feed.RunAsStatusLine());
+
             // single instance: the new one replaces the old
             var me = System.Diagnostics.Process.GetCurrentProcess();
             foreach (var p in System.Diagnostics.Process.GetProcessesByName(me.ProcessName))

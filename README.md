@@ -30,6 +30,14 @@ and the on-screen keyboard use.
   per day of new tokens (cache writes at the bottom, prompts + answers on top)
   over the current and previous month, computed from your local Claude Code
   transcripts. Nothing leaves your machine.
+- **Local feed (recommended)** — right-click → *Local feed via Claude Code*:
+  the widget reads the limits Claude Code pushes locally on every turn instead
+  of polling Anthropic's usage endpoint, which has started rate-limiting
+  (HTTP 429). No network call at all while Claude Code is running; the API
+  poll remains as an automatic fallback, now with proper backoff. Enabling it
+  writes the `statusLine` entry of `~/.claude/settings.json` — in return your
+  terminal gains a usage status line. See
+  [Where the numbers come from](#where-the-numbers-come-from).
 - **Built-in updates** — the widget checks this repository every 6 hours, and
   on every *Refresh* click; when a newer version is published the border turns
   Claude-orange and an *Update available* entry appears at the top of the
@@ -96,6 +104,29 @@ That downloads this repository to a temporary folder, builds
 Allow") — that is where Claude Code keeps the token on macOS. Details,
 manual install and uninstall: [`mac/README.md`](mac/README.md).
 
+## Where the numbers come from
+
+Two sources, tried in this order:
+
+1. **The local feed** (opt-in, right-click → *Local feed via Claude Code*).
+   Claude Code pushes a JSON blob to its configured `statusLine` command on
+   every turn, and that blob carries the same 5-hour and 7-day numbers as the
+   usage endpoint — pushed locally, unauthenticated, with no rate limit.
+   Enabling the feed registers the widget as that command in
+   `~/.claude/settings.json` (a pristine backup is kept as
+   `settings.json.widget.bak`, and the toggle refuses to overwrite a
+   statusline configured by another tool). Claude Code renders whatever the
+   command prints, so the widget prints the usage summary and your terminal
+   gains a status line. The parked numbers are ignored once older than 10
+   minutes — when Claude Code is closed, the widget falls back to source 2.
+
+2. **The usage endpoint** (`/api/oauth/usage`), polled at most every 5
+   minutes. Since August 2026 it answers `429 Too Many Requests` much more
+   aggressively; the widget now backs off (10 → 20 → 40 → 60 minutes) instead
+   of retrying harder, keeps showing the last known numbers, and recovers on
+   its own. The one-minute retry only survives for *network* failures, where
+   it costs nothing remote and recovers fast after a wake from sleep.
+
 ## What it reads and writes
 
 This program handles your Claude Code credentials. In full:
@@ -107,6 +138,8 @@ This program handles your Claude Code credentials. In full:
 | `%APPDATA%\ClaudeWidget\config.json` | write | position, opacity, language |
 | `%APPDATA%\ClaudeWidget\log.txt` | write | diagnostics, capped at 128 KB — **never contains tokens** |
 | `%USERPROFILE%\.claude\projects\**\*.jsonl` | read | your local Claude Code transcripts, summed for the local usage chart — read only, nothing is sent anywhere |
+| `%USERPROFILE%\.claude\settings.json` | write, **only when you enable the local feed** | adds/removes the `statusLine` entry; pristine backup kept as `settings.json.widget.bak` |
+| `%APPDATA%\ClaudeWidget\feed.json` | write | the last numbers pushed by Claude Code, parked for the widget — never contains tokens |
 
 **Why it writes back to `.credentials.json`:** the OAuth server rotates refresh
 tokens — using one invalidates the previous one. An earlier version kept the
@@ -140,6 +173,11 @@ nothing else to wire up. Keep `Short5h` / `Short7d` very short, they render in a
 
 **The numbers stop updating.** Right-click → *Open log*
 (`%APPDATA%\ClaudeWidget\log.txt`) gives the exact reason for the last failure.
+
+**`(429) Too Many Requests` in the tooltip or the log.** Anthropic rate-limits
+the undocumented usage endpoint. The widget backs off and recovers on its own,
+but the real fix is right-click → *Local feed via Claude Code*: the numbers
+then come from your own machine, with no API call to be limited.
 
 **Nothing refreshes at all, and the log shows timeouts.** The widget requests
 IPv4 on purpose: on a router that advertises an IPv6 prefix without actually
