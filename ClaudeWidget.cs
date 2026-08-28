@@ -182,7 +182,8 @@ namespace ClaudeWidgetApp
 
         public string SourceFeed;       // tooltip line when the numbers came from the feed
         public string ErrRateLimited;   // friendlier than the raw HTTP 429 message
-        public string FeedHint;         // appended to the offline message on HTTP 429
+        public string ErrExpired;       // friendlier than the raw HTTP 401/403 message
+        public string FeedHint;         // appended to the offline message on HTTP 429/401
         public string FeedHintBusy;     // same spot, when a foreign statusline blocks the feed
     }
 
@@ -238,7 +239,8 @@ namespace ClaudeWidgetApp
                 ErrBadResponse = "Unreadable API response",
                 SourceFeed = "source: Claude Code (local feed)",
                 ErrRateLimited = "API rate limited (429)",
-                FeedHint = "Open Claude Code",
+                ErrExpired = "Session expired",
+                FeedHint = "Start a new Claude Code session",
                 FeedHintBusy = "Statusline taken (see log)"
             };
         }
@@ -282,7 +284,8 @@ namespace ClaudeWidgetApp
                 ErrBadResponse = "Réponse de l'API illisible",
                 SourceFeed = "source : Claude Code (flux local)",
                 ErrRateLimited = "API limitée (429)",
-                FeedHint = "Ouvre Claude Code",
+                ErrExpired = "Session expirée",
+                FeedHint = "Ouvre une nouvelle session Claude Code",
                 FeedHintBusy = "Statusline occupée (voir journal)"
             };
         }
@@ -326,7 +329,8 @@ namespace ClaudeWidgetApp
                 ErrBadResponse = "Respuesta de la API ilegible",
                 SourceFeed = "fuente: Claude Code (local)",
                 ErrRateLimited = "API limitada (429)",
-                FeedHint = "Abra Claude Code",
+                ErrExpired = "Sesión caducada",
+                FeedHint = "Abra una nueva sesión de Claude Code",
                 FeedHintBusy = "Statusline ocupada (ver registro)"
             };
         }
@@ -370,7 +374,8 @@ namespace ClaudeWidgetApp
                 ErrBadResponse = "Unlesbare API-Antwort",
                 SourceFeed = "Quelle: Claude Code (lokal)",
                 ErrRateLimited = "API begrenzt (429)",
-                FeedHint = "Claude Code öffnen",
+                ErrExpired = "Sitzung abgelaufen",
+                FeedHint = "Neue Claude-Code-Sitzung starten",
                 FeedHintBusy = "Statusline belegt (s. Protokoll)"
             };
         }
@@ -404,7 +409,7 @@ namespace ClaudeWidgetApp
     {
         // Bump this when publishing: the update check compares it against the
         // same line in the repository's ClaudeWidget.cs.
-        public const string Version = "2026.09.06";
+        public const string Version = "2026.09.07";
         const string SourceUrl = "https://raw.githubusercontent.com/Defacedz/claude-usage-widget/main/ClaudeWidget.cs";
         public const string ArchiveUrl = "https://github.com/Defacedz/claude-usage-widget/archive/refs/heads/main.zip";
 
@@ -1665,10 +1670,13 @@ namespace ClaudeWidgetApp
             else
             {
                 string msg = _lastErr == null ? L.Loading : string.Format(L.Offline, _lastErr);
-                // Rate limited with nothing to show yet: the local feed is
-                // the way out, say so where the user is already looking -
-                // and say the truth when a foreign statusline blocks it.
-                if (_lastErrCode == 429)
+                // Rate limited or signed out with nothing to show yet: a NEW
+                // Claude Code session is the way out of both - it loads the
+                // statusline, which pushes the numbers locally, no API and no
+                // valid token needed. Sessions already open never will: Claude
+                // Code only reads the statusline entry when a session starts.
+                // And say the truth when a foreign statusline blocks the feed.
+                if (_lastErrCode == 429 || _lastErrCode == 401 || _lastErrCode == 403)
                     msg += "\n" + (Feed.Detect() == Feed.State.Foreign ? L.FeedHintBusy : L.FeedHint);
                 ShowMessage(msg);
             }
@@ -1736,7 +1744,11 @@ namespace ClaudeWidgetApp
                         var hr = we.Response as HttpWebResponse;
                         code = hr == null ? 0 : (int)hr.StatusCode;
                         if (hr != null) hr.Close();
-                        err = code == 429 ? I18n.T.ErrRateLimited : we.Message;
+                        // Map the two codes a person can act on to plain
+                        // words; anything else keeps its raw message.
+                        if (code == 429) err = I18n.T.ErrRateLimited;
+                        else if (code == 401 || code == 403) err = I18n.T.ErrExpired;
+                        else err = we.Message;
                     }
                     catch (Exception e) { err = e.Message; }
                 }

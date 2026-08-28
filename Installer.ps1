@@ -9,7 +9,18 @@
 #  ANSI, so an accented character here would corrupt the script.
 # ============================================================
 $ErrorActionPreference = 'Stop'
-function Fail($msg) { Write-Host "`n[ERROR] $msg" -ForegroundColor Red; Read-Host 'Press Enter to close'; exit 1 }
+
+# Keystrokes typed while the build runs pile up in the console input buffer
+# and used to eat several Enters before Read-Host finally saw a fresh one.
+# Flush first, then take any single key.
+function WaitKey {
+    try {
+        $Host.UI.RawUI.FlushInputBuffer()
+        Write-Host 'Press any key to close...'
+        [void]$Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown')
+    } catch { Read-Host 'Press Enter to close' }
+}
+function Fail($msg) { Write-Host "`n[ERROR] $msg" -ForegroundColor Red; WaitKey; exit 1 }
 
 try {
     $here = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -110,7 +121,7 @@ try {
 
     Write-Host "`n[OK] Installed and started from $destDir" -ForegroundColor Green
     Write-Host 'Right-click the widget for language, opacity, autostart and quit.'
-    Read-Host 'Press Enter to close'
+    WaitKey
 } catch {
     Fail $_.Exception.Message
 }
