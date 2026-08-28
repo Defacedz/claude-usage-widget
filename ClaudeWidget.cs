@@ -457,7 +457,7 @@ namespace ClaudeWidgetApp
     {
         // Bump this when publishing: the update check compares it against the
         // same line in the repository's ClaudeWidget.cs.
-        public const string Version = "2026.09.11";
+        public const string Version = "2026.09.12";
         const string SourceUrl = "https://raw.githubusercontent.com/Defacedz/claude-usage-widget/main/ClaudeWidget.cs";
         public const string ArchiveUrl = "https://github.com/Defacedz/claude-usage-widget/archive/refs/heads/main.zip";
 
@@ -867,7 +867,10 @@ namespace ClaudeWidgetApp
 
         public static bool FinishLogin(string pasted)
         {
-            if (string.IsNullOrEmpty(_loginVerifier) || string.IsNullOrEmpty(pasted)) return false;
+            // These log lines matter: a silent false here once read as a
+            // mysterious "sign-in failed" when the box was simply empty.
+            if (string.IsNullOrEmpty(_loginVerifier)) { Log("sign-in: no pending login"); return false; }
+            if (string.IsNullOrEmpty(pasted)) { Log("sign-in: nothing pasted"); return false; }
             pasted = pasted.Trim();
             // The callback page shows "code#state"; accept a bare code too.
             string code = pasted, state = _loginVerifier;
@@ -1394,6 +1397,7 @@ namespace ClaudeWidgetApp
         // file costs nothing), but the API is only called when the clock
         // reaches _nextApiAt - pushed further out on each 429.
         DateTime _nextApiAt = DateTime.MinValue;
+        DateTime _lastApiCall = DateTime.MinValue;
         int _apiStrikes;
         bool _refreshBusy;
         bool _viaFeed;
@@ -1547,9 +1551,13 @@ namespace ClaudeWidgetApp
                 var t5 = new DispatcherTimer { Interval = TimeSpan.FromMinutes(30) };
                 t5.Tick += delegate { StartLocalScan(); };
                 t5.Start();
-                // handy for tests and screenshots: open the chart right away
+                // handy for tests and screenshots: open the chart or the
+                // sign-in box right away (--signin skips the browser)
                 foreach (string a in Environment.GetCommandLineArgs())
+                {
                     if (a == "--detail") { ShowLocalDetail(); break; }
+                    if (a == "--signin") { ShowSignIn(false); break; }
+                }
             };
         }
 
@@ -1884,8 +1892,13 @@ namespace ClaudeWidgetApp
 
                 u = Feed.TryRead(out feedTs);
                 if (u != null) viaFeed = true;
-                else if (force || DateTime.Now >= _nextApiAt)
+                // A forced refresh (menu click) jumps the backoff queue, but
+                // never closer than 30s to the previous call: rage-clicking
+                // with a dead token is how an IP earns itself a 429 throttle.
+                else if ((force && (DateTime.Now - _lastApiCall).TotalSeconds >= 30) ||
+                         (!force && DateTime.Now >= _nextApiAt))
                 {
+                    _lastApiCall = DateTime.Now;
                     try { u = Api.GetUsage(); }
                     catch (WebException we)
                     {
@@ -1941,41 +1954,99 @@ namespace ClaudeWidgetApp
         }
 
         // ---------- interactive sign-in ----------
-        // Opens the browser on claude.ai and a small paste box. Only ever
-        // shown on the user's explicit click; closing it changes nothing.
-        void ShowSignIn()
+        // Opens the browser on claude.ai and a paste box styled like the
+        // rest of the widget. Only ever shown on the user's explicit click;
+        // closing it changes nothing. openBrowser=false is for previews.
+        void ShowSignIn(bool openBrowser)
         {
-            try { Api.BeginLogin(); }
-            catch (Exception e) { Api.Log("sign-in launch failed: " + e.Message); return; }
+            if (openBrowser)
+            {
+                try { Api.BeginLogin(); }
+                catch (Exception e) { Api.Log("sign-in launch failed: " + e.Message); return; }
+            }
 
             Theme th = Theme.Current;
+            var title = new TextBlock
+            {
+                Text = L.MenuSignIn,
+                FontSize = 13,
+                FontWeight = FontWeights.SemiBold,
+                Foreground = B(th.Ink),
+                Margin = new Thickness(0, 0, 0, 8)
+            };
             var info = new TextBlock
             {
                 Text = L.LoginExplain,
-                Foreground = B(th.Ink),
+                FontSize = 11,
+                Foreground = B(th.Mid),
                 TextWrapping = TextWrapping.Wrap,
-                MaxWidth = 340
+                MaxWidth = 360
             };
-            var box = new TextBox { FontSize = 12, Margin = new Thickness(0, 10, 0, 10), MinWidth = 340 };
-            var ok = new Button { Content = "OK", Width = 84, Margin = new Thickness(0, 0, 8, 0), IsDefault = true };
-            var cancel = new Button { Content = L.LoginCancel, Width = 84, IsCancel = true };
+            var box = new TextBox
+            {
+                FontSize = 12,
+                Margin = new Thickness(0, 12, 0, 12),
+                MinWidth = 360,
+                Padding = new Thickness(6, 4, 6, 4),
+                Background = B(th.Track),
+                Foreground = B(th.Ink),
+                BorderBrush = B(th.Sep),
+                CaretBrush = B(th.Ink)
+            };
+            Func<string, bool, Button> mkBtn = delegate(string text, bool accent)
+            {
+                return new Button
+                {
+                    Content = text,
+                    MinWidth = 92,
+                    Padding = new Thickness(10, 5, 10, 5),
+                    FontSize = 11,
+                    Background = B(accent ? "#DA7756" : th.Track),
+                    Foreground = B(accent ? "#FFFFFF" : th.Ink),
+                    BorderBrush = B(accent ? "#DA7756" : th.Sep)
+                };
+            };
+            var ok = mkBtn("OK", true);
+            ok.Margin = new Thickness(0, 0, 8, 0);
+            ok.IsDefault = true;
+            ok.IsEnabled = false;                       // no empty submits
+            var cancel = mkBtn(L.LoginCancel, false);
+            cancel.IsCancel = true;
+            box.TextChanged += delegate { ok.IsEnabled = box.Text.Trim().Length > 0; };
+
             var btns = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
             btns.Children.Add(ok);
             btns.Children.Add(cancel);
-            var stack = new StackPanel { Margin = new Thickness(14) };
+            var stack = new StackPanel { Margin = new Thickness(18, 14, 18, 14) };
+            stack.Children.Add(title);
             stack.Children.Add(info);
             stack.Children.Add(box);
             stack.Children.Add(btns);
+
             var win = new Window
             {
                 Title = L.MenuSignIn,
-                Content = new Border { Background = B(th.WinBg), Child = stack },
+                WindowStyle = WindowStyle.None,
+                AllowsTransparency = true,
+                Background = Brushes.Transparent,
+                Content = new Border
+                {
+                    Background = B(th.WinBg),
+                    BorderBrush = B(th.WinBorder),
+                    BorderThickness = new Thickness(1),
+                    CornerRadius = new CornerRadius(10),
+                    Child = stack
+                },
                 SizeToContent = SizeToContent.WidthAndHeight,
-                WindowStartupLocation = WindowStartupLocation.CenterScreen,
+                WindowStartupLocation = WindowStartupLocation.Manual,
+                Left = Left,
+                Top = Math.Max(0, Top - 190),
                 Topmost = true,
                 ResizeMode = ResizeMode.NoResize,
                 ShowInTaskbar = false
             };
+            win.MouseLeftButtonDown += delegate { try { win.DragMove(); } catch { } };
+
             ok.Click += delegate
             {
                 string pasted = box.Text;
@@ -1993,7 +2064,21 @@ namespace ClaudeWidgetApp
                 });
             };
             cancel.Click += delegate { win.Close(); };
-            win.Loaded += delegate { box.Focus(); };
+            win.Loaded += delegate
+            {
+                // The page's "Copy code" button leaves the code on the
+                // clipboard - pull it in so the flow is copy, then one click.
+                try
+                {
+                    string clip = Clipboard.GetText();
+                    if (!string.IsNullOrEmpty(clip) && clip.Length > 40 && clip.IndexOf('#') > 0 &&
+                        clip.IndexOf(' ') < 0 && clip.IndexOf('\n') < 0)
+                        box.Text = clip.Trim();
+                }
+                catch { }
+                box.Focus();
+                box.SelectAll();
+            };
             win.ShowDialog();
         }
 
@@ -2734,7 +2819,7 @@ namespace ClaudeWidgetApp
             menu.Items.Add(miDetail);
 
             var miSign = new MenuItem { Header = L.MenuSignIn };
-            miSign.Click += delegate { ShowSignIn(); };
+            miSign.Click += delegate { ShowSignIn(true); };
             menu.Items.Add(miSign);
 
             var miRepl = new MenuItem { Header = L.MenuMoveBottomLeft };
