@@ -240,7 +240,7 @@ namespace ClaudeWidgetApp
                 SourceFeed = "source: Claude Code (local feed)",
                 ErrRateLimited = "API rate limited (429)",
                 ErrExpired = "Session expired",
-                FeedHint = "Start a new Claude Code session",
+                FeedHint = "Restart Claude Code",
                 FeedHintBusy = "Statusline taken (see log)"
             };
         }
@@ -285,7 +285,7 @@ namespace ClaudeWidgetApp
                 SourceFeed = "source : Claude Code (flux local)",
                 ErrRateLimited = "API limitée (429)",
                 ErrExpired = "Session expirée",
-                FeedHint = "Ouvre une nouvelle session Claude Code",
+                FeedHint = "Relance Claude Code",
                 FeedHintBusy = "Statusline occupée (voir journal)"
             };
         }
@@ -330,7 +330,7 @@ namespace ClaudeWidgetApp
                 SourceFeed = "fuente: Claude Code (local)",
                 ErrRateLimited = "API limitada (429)",
                 ErrExpired = "Sesión caducada",
-                FeedHint = "Abra una nueva sesión de Claude Code",
+                FeedHint = "Reinicie Claude Code",
                 FeedHintBusy = "Statusline ocupada (ver registro)"
             };
         }
@@ -375,7 +375,7 @@ namespace ClaudeWidgetApp
                 SourceFeed = "Quelle: Claude Code (lokal)",
                 ErrRateLimited = "API begrenzt (429)",
                 ErrExpired = "Sitzung abgelaufen",
-                FeedHint = "Neue Claude-Code-Sitzung starten",
+                FeedHint = "Claude Code neu starten",
                 FeedHintBusy = "Statusline belegt (s. Protokoll)"
             };
         }
@@ -409,7 +409,7 @@ namespace ClaudeWidgetApp
     {
         // Bump this when publishing: the update check compares it against the
         // same line in the repository's ClaudeWidget.cs.
-        public const string Version = "2026.09.07";
+        public const string Version = "2026.09.08";
         const string SourceUrl = "https://raw.githubusercontent.com/Defacedz/claude-usage-widget/main/ClaudeWidget.cs";
         public const string ArchiveUrl = "https://github.com/Defacedz/claude-usage-widget/archive/refs/heads/main.zip";
 
