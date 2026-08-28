@@ -404,12 +404,34 @@ namespace ClaudeWidgetApp
         }
     }
 
+    // ---------- Claude Code home ----------
+    // Claude Code keeps everything in ~/.claude unless CLAUDE_CONFIG_DIR
+    // says otherwise (setups sharing one config over a NAS, for instance).
+    // The widget must follow it everywhere - credentials, settings,
+    // transcripts, version marker. Reading ~/.claude on a machine whose real
+    // config lives elsewhere means stale tokens that poison the rate limit,
+    // and a statusline entry written into a file nobody reads.
+    public static class ClaudeHome
+    {
+        public static string Dir
+        {
+            get
+            {
+                string d = Environment.GetEnvironmentVariable("CLAUDE_CONFIG_DIR");
+                if (string.IsNullOrEmpty(d))
+                    d = Environment.GetEnvironmentVariable("CLAUDE_CONFIG_DIR", EnvironmentVariableTarget.User);
+                if (!string.IsNullOrEmpty(d) && Directory.Exists(d)) return d;
+                return System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".claude");
+            }
+        }
+    }
+
     // ---------- Claude API ----------
     public static class Api
     {
         // Bump this when publishing: the update check compares it against the
         // same line in the repository's ClaudeWidget.cs.
-        public const string Version = "2026.09.09";
+        public const string Version = "2026.09.10";
         const string SourceUrl = "https://raw.githubusercontent.com/Defacedz/claude-usage-widget/main/ClaudeWidget.cs";
         public const string ArchiveUrl = "https://github.com/Defacedz/claude-usage-widget/archive/refs/heads/main.zip";
 
@@ -424,11 +446,11 @@ namespace ClaudeWidgetApp
 
         static string CredPath
         {
-            get { return System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".claude\\.credentials.json"); }
+            get { return System.IO.Path.Combine(ClaudeHome.Dir, ".credentials.json"); }
         }
         static string VersionPath
         {
-            get { return System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".claude\\.last-update-result.json"); }
+            get { return System.IO.Path.Combine(ClaudeHome.Dir, ".last-update-result.json"); }
         }
 
         // The endpoint buckets unknown User-Agents into a much harsher rate
@@ -821,7 +843,7 @@ namespace ClaudeWidgetApp
     {
         public static string SettingsPath
         {
-            get { return System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".claude\\settings.json"); }
+            get { return System.IO.Path.Combine(ClaudeHome.Dir, "settings.json"); }
         }
         static string Dir
         {
@@ -1164,8 +1186,7 @@ namespace ClaudeWidgetApp
             var d = new LocalDaily { Start = startLocalDate, Writes = new long[n], Answers = new long[n] };
             var seen = new HashSet<string>();
             DateTime minMtimeUtc = startLocalDate.AddDays(-1).ToUniversalTime();
-            string root = System.IO.Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".claude\\projects");
+            string root = System.IO.Path.Combine(ClaudeHome.Dir, "projects");
             if (!Directory.Exists(root)) return d;
 
             // list eligible files first so the progress counter has a total
@@ -1784,8 +1805,11 @@ namespace ClaudeWidgetApp
                         Api.Log("refresh failed: " + err + (code != 0 ? " (HTTP " + code + ")" : ""));
                         _lastErr = err; _lastErrCode = code;
                         TimeSpan delay;
-                        if (code == 429)
+                        if (code == 429 || code == 401 || code == 403)
                         {
+                            // Rate limited - or a dead token, which does not
+                            // heal in five minutes and whose hammering is
+                            // precisely what triggers the 429 throttle.
                             _apiStrikes = Math.Min(_apiStrikes + 1, 4);
                             delay = TimeSpan.FromMinutes(Math.Min(60, 5 * (1 << _apiStrikes)));
                         }
