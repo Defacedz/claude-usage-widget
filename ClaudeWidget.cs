@@ -467,7 +467,7 @@ namespace ClaudeWidgetApp
     {
         // Bump this when publishing: the update check compares it against the
         // same line in the repository's ClaudeWidget.cs.
-        public const string Version = "2026.09.13";
+        public const string Version = "2026.09.14";
         const string SourceUrl = "https://raw.githubusercontent.com/Defacedz/claude-usage-widget/main/ClaudeWidget.cs";
         public const string ArchiveUrl = "https://github.com/Defacedz/claude-usage-widget/archive/refs/heads/main.zip";
 
@@ -489,30 +489,23 @@ namespace ClaudeWidgetApp
             get { return System.IO.Path.Combine(ClaudeHome.Dir, ".last-update-result.json"); }
         }
 
-        // The endpoint buckets unknown User-Agents into a much harsher rate
-        // limit - that is what the 2026-08 "429 for everybody" actually was,
-        // and it hit the token hosts too (refreshes died as ProtocolError).
-        // It wants "claude-code/<version>"; the real version is read from
-        // Claude Code's own update marker. Credit: the vibespan fork found it.
-        static string _userAgent;
+        // Identify honestly, as this widget.
+        //
+        // Anthropic buckets rate limits by User-Agent. "claude-code/<version>"
+        // looked like the winning ticket for a day - every third-party poller
+        // was told to send it - and that is exactly why its shared bucket is
+        // now saturated: on 2026-08-28 the token host answered 429 to
+        // "claude-code/2.1.241" and a normal 400 to this widget's own name,
+        // from the same machine, seconds apart. Borrowing the official
+        // client's identity also means borrowing its throttle, and pushing
+        // our load onto real Claude Code users.
+        //
+        // So: our own name and version. Our own bucket, sized to our own
+        // (rare) traffic - one usage call per five minutes, one token
+        // refresh per eight hours.
         static string UserAgent
         {
-            get
-            {
-                if (_userAgent != null) return _userAgent;
-                string ver = null;
-                try
-                {
-                    if (File.Exists(VersionPath))
-                    {
-                        var u = Json.Read<UpdateResult>(File.ReadAllText(VersionPath));
-                        if (u != null) ver = u.version_to;
-                    }
-                }
-                catch { }
-                _userAgent = "claude-code/" + (string.IsNullOrEmpty(ver) ? "2.1.0" : ver);
-                return _userAgent;
-            }
+            get { return "ClaudeWidget/" + Version + " (+https://github.com/Defacedz/claude-usage-widget)"; }
         }
         static string CacheDir
         {
