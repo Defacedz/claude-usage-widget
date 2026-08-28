@@ -5,9 +5,8 @@ limits you have burned through, and when they reset.
 
 *Read this in [Français](README.fr.md).*
 
-<img src="docs/screenshot.png" alt="The widget in the Dark theme, showing a 31% five-hour session and 60% weekly usage" width="308">
-<br>
-<img src="docs/screenshot-ivory.png" alt="The same widget in the Ivory theme" width="308">
+<img src="docs/screenshot.png" alt="The widget in the Dark theme" width="254">
+<img src="docs/screenshot-ivory.png" alt="The widget in the Ivory theme" width="254">
 
 It sits above the taskbar and never disappears behind it, because the
 executable is built with the `uiAccess` privilege — the same one the Magnifier

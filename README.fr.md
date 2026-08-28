@@ -5,9 +5,8 @@ limites d'utilisation Claude et quand elles se réinitialisent.
 
 *Read this in [English](README.md).*
 
-<img src="docs/screenshot.png" alt="Le widget en thème Sombre, affichant 31 % de session 5 h et 60 % d'usage hebdomadaire" width="308">
-<br>
-<img src="docs/screenshot-ivory.png" alt="Le même widget en thème Ivoire" width="308">
+<img src="docs/screenshot.png" alt="Le widget en thème Sombre" width="254">
+<img src="docs/screenshot-ivory.png" alt="Le widget en thème Ivoire" width="254">
 
 Elle se place au-dessus de la barre des tâches et ne passe jamais derrière,
 car l'exécutable est compilé avec le privilège `uiAccess` — le même que la
