@@ -5,7 +5,9 @@ limites d'utilisation Claude et quand elles se réinitialisent.
 
 *Read this in [English](README.md).*
 
-<img src="docs/screenshot.png" alt="Le widget affichant 31 % de session 5 h et 60 % d'usage hebdomadaire" width="382">
+<img src="docs/screenshot.png" alt="Le widget en thème Sombre, affichant 31 % de session 5 h et 60 % d'usage hebdomadaire" width="308">
+<br>
+<img src="docs/screenshot-ivory.png" alt="Le même widget en thème Ivoire" width="308">
 
 Elle se place au-dessus de la barre des tâches et ne passe jamais derrière,
 car l'exécutable est compilé avec le privilège `uiAccess` — le même que la
@@ -32,14 +34,13 @@ Loupe ou le clavier visuel.
   bâtonnet par jour des tokens neufs (écritures de cache en bas, messages et
   réponses au-dessus) sur le mois en cours et le mois précédent, calculé
   depuis vos conversations Claude Code locales. Rien ne quitte votre machine.
-- **Flux local (recommandé)** — clic droit → *Flux local via Claude Code* : le
-  widget lit les limites que Claude Code pousse localement à chaque tour, au
-  lieu d'interroger le point d'accès d'usage d'Anthropic, qui s'est mis à
-  limiter les requêtes (HTTP 429). Aucun appel réseau tant que Claude Code
-  tourne ; l'interrogation de l'API reste en secours automatique, désormais
-  avec un vrai recul progressif. L'activation écrit l'entrée `statusLine` de
-  `~/.claude/settings.json` — en échange, le terminal gagne une ligne d'état
-  avec la conso. Voir [D'où viennent les chiffres](#doù-viennent-les-chiffres).
+- **Flux local** — le widget lit les limites que Claude Code pousse localement
+  à chaque tour, au lieu d'interroger le point d'accès d'usage d'Anthropic,
+  qui s'est mis à limiter les requêtes (HTTP 429). Branché automatiquement au
+  démarrage ; aucun appel réseau tant que Claude Code tourne, et
+  l'interrogation de l'API reste en secours, désormais avec un vrai recul
+  progressif. En échange, le terminal gagne une ligne d'état avec la conso.
+  Voir [D'où viennent les chiffres](#doù-viennent-les-chiffres).
 - **Mises à jour intégrées** — le widget compare sa version à ce dépôt toutes
   les 6 heures, et à chaque clic sur *Actualiser* ; quand une nouvelle version
   est publiée, le contour passe à l'orange Claude et une entrée *Mise à jour
@@ -49,7 +50,7 @@ Loupe ou le clavier visuel.
 - Ne se replace au-dessus de la barre des tâches que si elle l'a réellement
   recouvert, au lieu de deux fois par seconde — fini le clignotement
 
-<img src="docs/screenshot-usage.png" alt="Le graphique de conso locale : tokens neufs par jour sur deux mois" width="480">
+<img src="docs/screenshot-usage.png" alt="Le graphique de conso locale : un bâtonnet empilé par jour de tokens neufs sur deux mois" width="480">
 
 ## Prérequis (Windows)
 
@@ -115,17 +116,18 @@ Détails, installation manuelle et désinstallation :
 
 Deux sources, essayées dans cet ordre :
 
-1. **Le flux local** (à activer, clic droit → *Flux local via Claude Code*).
-   Claude Code pousse un blob JSON vers sa commande `statusLine` à chaque
-   tour, et ce blob porte les mêmes chiffres 5 h et 7 j que le point d'accès
-   d'usage — poussés localement, sans authentification, sans limite de débit.
-   Activer le flux inscrit le widget comme cette commande dans
-   `~/.claude/settings.json` (une copie intacte est gardée en
-   `settings.json.widget.bak`, et la bascule refuse d'écraser une statusline
-   configurée par un autre outil). Claude Code affiche ce que la commande
-   imprime : le widget imprime donc le résumé de conso, et le terminal gagne
-   une ligne d'état. Les chiffres déposés sont ignorés au-delà de 10 minutes —
-   Claude Code fermé, le widget rebascule sur la source 2.
+1. **Le flux local.** Claude Code pousse un blob JSON vers sa commande
+   `statusLine` à chaque tour, et ce blob porte les mêmes chiffres 5 h et 7 j
+   que le point d'accès d'usage — poussés localement, sans authentification,
+   sans limite de débit. Au démarrage, le widget inscrit automatiquement son
+   assistant (`ClaudeWidgetFeed.exe`) comme cette commande dans
+   `~/.claude/settings.json`. Deux garde-fous : une copie intacte est gardée
+   en `settings.json.widget.bak`, et une statusline configurée par un autre
+   outil n'est jamais écrasée — c'est le seul cas où le flux reste inactif.
+   Claude Code affiche ce que la commande imprime : le widget imprime donc le
+   résumé de conso, et le terminal gagne une ligne d'état. Les chiffres
+   déposés sont ignorés au-delà de 10 minutes — Claude Code fermé, le widget
+   rebascule sur la source 2.
 
 2. **Le point d'accès d'usage** (`/api/oauth/usage`), interrogé au plus toutes
    les 5 minutes. Depuis août 2026 il répond `429 Too Many Requests` bien plus
@@ -146,7 +148,7 @@ Ce programme manipule vos identifiants Claude Code. En détail :
 | `%APPDATA%\ClaudeWidget\config.json` | écriture | position, opacité, langue |
 | `%APPDATA%\ClaudeWidget\log.txt` | écriture | diagnostic, limité à 128 Ko — **ne contient jamais de jeton** |
 | `%USERPROFILE%\.claude\projects\**\*.jsonl` | lecture | vos conversations Claude Code locales, additionnées pour le graphique de conso — lecture seule, rien n'est envoyé nulle part |
-| `%USERPROFILE%\.claude\settings.json` | écriture, **seulement si vous activez le flux local** | ajoute/retire l'entrée `statusLine` ; copie intacte gardée en `settings.json.widget.bak` |
+| `%USERPROFILE%\.claude\settings.json` | écriture, au démarrage | inscrit l'assistant de flux comme entrée `statusLine`, sauf si un autre outil l'occupe déjà ; copie intacte gardée en `settings.json.widget.bak` |
 | `%APPDATA%\ClaudeWidget\feed.json` | écriture | les derniers chiffres poussés par Claude Code, déposés pour le widget — **ne contient jamais de jeton** |
 
 **Pourquoi réécrire dans `.credentials.json` :** le serveur OAuth fait tourner
@@ -185,9 +187,14 @@ en **UTF-8 avec BOM**. Les contributions sont bienvenues.
 
 **`(429) Too Many Requests` dans l'infobulle ou le journal.** Anthropic limite
 le débit du point d'accès d'usage non documenté. Le widget recule et se
-rétablit seul, mais le vrai remède est clic droit → *Flux local via Claude
-Code* : les chiffres viennent alors de votre propre machine, sans aucun appel
-d'API à limiter.
+rétablit seul — et tant que Claude Code tourne, les chiffres passent par le
+flux local, sans aucun appel d'API à limiter. Un 429 avec des jauges figées ?
+Ouvrez Claude Code.
+
+**Aucune ligne d'état n'apparaît dans Claude Code.** Un autre outil occupe
+sans doute l'entrée `statusLine` de `~/.claude/settings.json` — le widget ne
+l'écrase jamais (le journal le dit au démarrage). Retirez cette entrée puis
+redémarrez le widget pour qu'il branche le flux.
 
 **Plus rien ne se rafraîchit et le journal montre des délais dépassés.** Le
 widget demande de l'IPv4 volontairement : sur une box qui annonce un préfixe
@@ -210,6 +217,9 @@ par-dessus une vidéo en plein écran — au prix de son retour par-dessus les j
 4. Retirez le certificat : `certlm.msc` → *Autorités de certification racines
    de confiance* → *Certificats* → supprimez **ClaudeWidget Local**, puis
    faites de même dans *Éditeurs approuvés* et *Personnel*
+5. Retirez l'entrée `statusLine` de `%USERPROFILE%\.claude\settings.json`
+   (ou restaurez la copie `settings.json.widget.bak`) — sinon Claude Code
+   continuera d'appeler l'assistant de flux supprimé
 
 ## Licence
 

@@ -175,9 +175,6 @@ namespace ClaudeWidgetApp
 
         public string ErrNotSignedIn, ErrBadResponse;
 
-        public string MenuFeed;         // context-menu toggle for the local feed
-        public string MenuFeedBusy;     // shown instead when another tool owns the statusline
-        public string MenuFeedTip;      // tooltip explaining what enabling does
         public string SourceFeed;       // tooltip line when the numbers came from the feed
         public string ErrRateLimited;   // friendlier than the raw HTTP 429 message
         public string FeedHint;         // appended to the offline message on HTTP 429
@@ -233,12 +230,9 @@ namespace ClaudeWidgetApp
                 DetailNote = "Counted from the local Claude Code transcripts: sent + produced + cache-written tokens. Context re-reads are excluded - they barely count toward the limit.",
                 ErrNotSignedIn = "Claude Code is not signed in (run it once)",
                 ErrBadResponse = "Unreadable API response",
-                MenuFeed = "Local feed via Claude Code",
-                MenuFeedBusy = "Local feed: statusline already in use",
-                MenuFeedTip = "Reads the limits Claude Code pushes locally instead of polling the API.\nWrites the statusLine entry of ~/.claude/settings.json (reversible here);\nin return your terminal gains a usage status line.",
                 SourceFeed = "source: Claude Code (local feed)",
                 ErrRateLimited = "rate limited by Anthropic, retrying later",
-                FeedHint = "Tip: enable the local feed (right-click)"
+                FeedHint = "Open Claude Code: the numbers arrive locally, no API involved"
             };
         }
 
@@ -279,12 +273,9 @@ namespace ClaudeWidgetApp
                 DetailNote = "Compté depuis les conversations locales de Claude Code : tokens envoyés + produits + écrits en cache. Les relectures de contexte sont exclues - elles ne pèsent presque pas sur la limite.",
                 ErrNotSignedIn = "Claude Code n'est pas connecté (lance-le une fois)",
                 ErrBadResponse = "Réponse de l'API illisible",
-                MenuFeed = "Flux local via Claude Code",
-                MenuFeedBusy = "Flux local : statusline déjà occupée",
-                MenuFeedTip = "Lit les limites que Claude Code pousse localement au lieu d'interroger l'API.\nÉcrit l'entrée statusLine de ~/.claude/settings.json (réversible ici) ;\nen échange le terminal gagne une ligne d'état avec la conso.",
                 SourceFeed = "source : Claude Code (flux local)",
                 ErrRateLimited = "limité par Anthropic, nouvel essai plus tard",
-                FeedHint = "Astuce : activer le flux local (clic droit)"
+                FeedHint = "Ouvre Claude Code : les chiffres arrivent en local, sans l'API"
             };
         }
 
@@ -325,12 +316,9 @@ namespace ClaudeWidgetApp
                 DetailNote = "Contado desde las conversaciones locales de Claude Code: tokens enviados + producidos + escritos en caché. Las relecturas de contexto quedan fuera - apenas cuentan para el límite.",
                 ErrNotSignedIn = "Claude Code no ha iniciado sesión (ejecútalo una vez)",
                 ErrBadResponse = "Respuesta de la API ilegible",
-                MenuFeed = "Fuente local vía Claude Code",
-                MenuFeedBusy = "Fuente local: statusline ya en uso",
-                MenuFeedTip = "Lee los límites que Claude Code publica localmente en lugar de consultar la API.\nEscribe la entrada statusLine de ~/.claude/settings.json (reversible aquí);\na cambio la terminal gana una línea de estado con el uso.",
                 SourceFeed = "fuente: Claude Code (local)",
                 ErrRateLimited = "limitado por Anthropic, se reintentará más tarde",
-                FeedHint = "Consejo: active la fuente local (clic derecho)"
+                FeedHint = "Abra Claude Code: los números llegan en local, sin la API"
             };
         }
 
@@ -371,12 +359,9 @@ namespace ClaudeWidgetApp
                 DetailNote = "Gezählt aus den lokalen Claude-Code-Unterhaltungen: gesendete + erzeugte + in den Cache geschriebene Tokens. Erneut gelesener Kontext zählt nicht - er wiegt kaum auf dem Limit.",
                 ErrNotSignedIn = "Claude Code ist nicht angemeldet (einmal starten)",
                 ErrBadResponse = "Unlesbare API-Antwort",
-                MenuFeed = "Lokale Quelle über Claude Code",
-                MenuFeedBusy = "Lokale Quelle: Statusline bereits belegt",
-                MenuFeedTip = "Liest die Limits, die Claude Code lokal liefert, statt die API abzufragen.\nSchreibt den statusLine-Eintrag in ~/.claude/settings.json (hier umkehrbar);\ndafür erhält das Terminal eine Statuszeile mit der Nutzung.",
                 SourceFeed = "Quelle: Claude Code (lokal)",
                 ErrRateLimited = "von Anthropic begrenzt, späterer Versuch",
-                FeedHint = "Tipp: lokale Quelle aktivieren (Rechtsklick)"
+                FeedHint = "Claude Code öffnen: die Zahlen kommen lokal an, ohne die API"
             };
         }
     }
@@ -409,7 +394,7 @@ namespace ClaudeWidgetApp
     {
         // Bump this when publishing: the update check compares it against the
         // same line in the repository's ClaudeWidget.cs.
-        public const string Version = "2026.09.01";
+        public const string Version = "2026.09.02";
         const string SourceUrl = "https://raw.githubusercontent.com/Defacedz/claude-usage-widget/main/ClaudeWidget.cs";
         public const string WebInstall = "https://raw.githubusercontent.com/Defacedz/claude-usage-widget/main/web-install.ps1";
 
@@ -745,9 +730,10 @@ namespace ClaudeWidgetApp
     // rate limit. Since the endpoint started answering 429 (2026-08), this is
     // the primary source; the API poll is the fallback for when Claude Code
     // is closed.
-    // Enabling writes our exe as the statusLine command of
-    // ~/.claude/settings.json - opt-in from the context menu, reversible, and
-    // it refuses to overwrite a statusline configured by something else.
+    // The widget wires itself automatically at startup: it writes the feed
+    // helper as the statusLine command of ~/.claude/settings.json. The one
+    // thing it never does is overwrite a statusline configured by another
+    // tool. A pristine backup is kept as settings.json.widget.bak.
     // Claude Code renders whatever the command prints, so running as the
     // statusline also has to LEAVE a status line: we print the usage summary,
     // and the terminal gains a statusline out of the deal.
@@ -834,14 +820,42 @@ namespace ClaudeWidgetApp
             try
             {
                 State st = Detect();
-                if (st == State.Foreign) return false;
-                if (st == State.Ours) return true;
+                if (st == State.Foreign) { Api.Log("feed not wired: statusline owned by another tool"); return false; }
 
                 string exe = System.Reflection.Assembly.GetExecutingAssembly().Location;
+                // Prefer the helper built without the uiAccess manifest: a
+                // statusline spawn neither needs nor reliably gets the higher
+                // integrity level the main exe asks for.
+                string helper = System.IO.Path.Combine(System.IO.Path.GetDirectoryName(exe), "ClaudeWidgetFeed.exe");
+                if (File.Exists(helper)) exe = helper;
                 string entry = "\"statusLine\": {\"type\": \"command\", \"command\": \"\\\"" +
                                exe.Replace("\\", "\\\\") + "\\\" --feed\", \"padding\": 0}";
 
                 string json = File.Exists(SettingsPath) ? File.ReadAllText(SettingsPath) : "";
+
+                // Already ours: right path -> nothing to do; stale path (a
+                // moved install, or an older version that registered the
+                // uiAccess exe itself) -> strip the entry and re-insert.
+                if (st == State.Ours)
+                {
+                    int bs, be;
+                    string block = StatusLineBlock(json, out bs, out be);
+                    if (block == null) return false;
+                    if (block.IndexOf(exe.Replace("\\", "\\\\"), StringComparison.OrdinalIgnoreCase) >= 0)
+                        return true;
+                    int be2 = be;
+                    while (be2 < json.Length && char.IsWhiteSpace(json[be2])) be2++;
+                    if (be2 < json.Length && json[be2] == ',') be = be2 + 1;
+                    else
+                    {
+                        int bs2 = bs - 1;
+                        while (bs2 >= 0 && char.IsWhiteSpace(json[bs2])) bs2--;
+                        if (bs2 >= 0 && json[bs2] == ',') bs = bs2;
+                    }
+                    json = json.Substring(0, bs) + json.Substring(be);
+                    Api.Log("feed entry rewritten (stale command path)");
+                }
+
                 string upd;
                 int brace = json.IndexOf('{');
                 if (brace < 0) upd = "{\n  " + entry + "\n}\n";
@@ -1249,6 +1263,10 @@ namespace ClaudeWidgetApp
             {
                 _hwnd = new System.Windows.Interop.WindowInteropHelper(this).Handle;
                 ApplyPos();
+                // Wire the local feed automatically. Enable() is a no-op when
+                // already wired, and refuses to touch a statusline owned by
+                // another tool - that is the only case left to the user.
+                ThreadPool.QueueUserWorkItem(delegate { try { Feed.Enable(); } catch { } });
                 Refresh(false);
                 // One-minute tick: the feed check is a local file stat, and
                 // the API call inside is gated by _nextApiAt anyway.
@@ -1527,8 +1545,7 @@ namespace ClaudeWidgetApp
                 string msg = _lastErr == null ? L.Loading : string.Format(L.Offline, _lastErr);
                 // Rate limited with nothing to show yet: the local feed is
                 // the way out, say so where the user is already looking.
-                if (_lastErrCode == 429 && Feed.Detect() != Feed.State.Ours)
-                    msg += "\n" + L.FeedHint;
+                if (_lastErrCode == 429) msg += "\n" + L.FeedHint;
                 ShowMessage(msg);
             }
         }
@@ -2345,27 +2362,6 @@ namespace ClaudeWidgetApp
             var miDetail = new MenuItem { Header = L.MenuLocalDetail };
             miDetail.Click += delegate { ShowLocalDetail(); };
             menu.Items.Add(miDetail);
-
-            // Local feed toggle. Greyed out when another tool already owns
-            // the statusline: we will not overwrite somebody else's entry.
-            var feedState = Feed.State.Off;
-            try { feedState = Feed.Detect(); } catch { }
-            var miFeed = new MenuItem
-            {
-                Header = feedState == Feed.State.Foreign ? L.MenuFeedBusy : L.MenuFeed,
-                IsCheckable = true,
-                IsChecked = feedState == Feed.State.Ours,
-                IsEnabled = feedState != Feed.State.Foreign,
-                ToolTip = L.MenuFeedTip
-            };
-            miFeed.Click += delegate
-            {
-                bool ok = Feed.Detect() == Feed.State.Ours ? Feed.Disable() : Feed.Enable();
-                if (!ok) Api.Log("feed toggle refused (foreign statusline or write failure)");
-                BuildMenu();        // reflect the new state
-                Refresh(true);
-            };
-            menu.Items.Add(miFeed);
 
             var miRepl = new MenuItem { Header = L.MenuMoveBottomLeft };
             miRepl.Click += delegate

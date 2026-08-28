@@ -26,6 +26,7 @@ try {
     # --- stop any running instance ---
     Write-Host '1/6 Stopping running instances...'
     Get-Process -Name 'ClaudeWidget' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+    Get-Process -Name 'ClaudeWidgetFeed' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
     Start-Sleep -Milliseconds 500
 
     # --- build ---
@@ -45,6 +46,19 @@ try {
         /r:"$wpf\PresentationFramework.dll" /r:"$wpf\PresentationCore.dll" /r:"$wpf\WindowsBase.dll" `
         $src
     if ($LASTEXITCODE -ne 0 -or -not (Test-Path $exe)) { Fail 'Build failed (see messages above).' }
+
+    # Second build, same source, WITHOUT the uiAccess manifest: the feed
+    # helper Claude Code spawns as its statusline command. A uiAccess process
+    # asks for a higher integrity level that a statusline spawn neither needs
+    # nor reliably gets, so the helper must not carry it. No signing needed.
+    $feedExe = Join-Path $env:TEMP 'ClaudeWidgetFeed.exe'
+    Remove-Item $feedExe -Force -ErrorAction SilentlyContinue
+    & $csc /nologo /target:winexe /out:$feedExe /codepage:65001 `
+        /r:System.dll /r:System.Core.dll /r:System.Xaml.dll `
+        /r:System.Runtime.Serialization.dll /r:Microsoft.CSharp.dll `
+        /r:"$wpf\PresentationFramework.dll" /r:"$wpf\PresentationCore.dll" /r:"$wpf\WindowsBase.dll" `
+        $src
+    if ($LASTEXITCODE -ne 0 -or -not (Test-Path $feedExe)) { Fail 'Feed helper build failed (see messages above).' }
 
     # --- certificate ---
     Write-Host '3/6 Local signing certificate...'
@@ -69,7 +83,9 @@ try {
     $destDir = Join-Path $env:ProgramFiles 'ClaudeWidget'
     New-Item -ItemType Directory -Path $destDir -Force | Out-Null
     Copy-Item $exe (Join-Path $destDir 'ClaudeWidget.exe') -Force
+    Copy-Item $feedExe (Join-Path $destDir 'ClaudeWidgetFeed.exe') -Force
     Remove-Item $exe -Force -ErrorAction SilentlyContinue
+    Remove-Item $feedExe -Force -ErrorAction SilentlyContinue
 
     Write-Host '6/6 Starting...'
     # Launched straight from this elevated shell, the widget would inherit
