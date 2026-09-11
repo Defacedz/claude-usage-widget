@@ -5,8 +5,8 @@ limites d'utilisation Claude et quand elles se réinitialisent.
 
 *Read this in [English](README.md).*
 
-<img src="docs/screenshot.png" alt="Le widget en thème Sombre" width="254">
-<img src="docs/screenshot-ivory.png" alt="Le widget en thème Ivoire" width="254">
+<img src="docs/screenshot.png" alt="Le widget en thème Sombre" width="366">
+<img src="docs/screenshot-ivory.png" alt="Le widget en thème Ivoire" width="366">
 
 Elle se place au-dessus de la barre des tâches et ne passe jamais derrière,
 car l'exécutable est compilé avec le privilège `uiAccess` — le même que la
@@ -59,26 +59,36 @@ Loupe ou le clavier visuel.
 
 ## Installation (Windows)
 
-Collez ceci dans **PowerShell** et acceptez la demande d'élévation :
+1. [**Téléchargez le dépôt en ZIP**](https://github.com/Defacedz/claude-usage-widget/archive/refs/heads/main.zip)
+   (ou *Code → Download ZIP* en haut de cette page)
+2. Décompressez-le où vous voulez
+3. Double-cliquez sur **`Installer.bat`** et acceptez la demande d'élévation
+
+Trois clics, rien à taper, et vous pouvez lire chaque ligne avant de l'exécuter —
+le bon réflexe pour n'importe quel installateur, et plus encore pour un
+programme qui touche à vos identifiants.
+
+La fenêtre affiche `[OK]` et le widget apparaît en bas à gauche. Clic droit
+pour la langue, l'opacité, le démarrage automatique et quitter. Les mises à
+jour suivantes tiennent en un clic : le widget surveille ce dépôt, son contour
+passe à l'orange quand une version plus récente existe, et *Mise à jour
+disponible* dans le menu clic droit la télécharge et l'installe.
+
+<details>
+<summary>Installation en une ligne (généralement bloquée par Defender)</summary>
 
 ```powershell
 irm https://raw.githubusercontent.com/Defacedz/claude-usage-widget/main/web-install.ps1 | iex
 ```
 
-Ou depuis **cmd.exe** :
+Les versions récentes de Microsoft Defender refusent de l'exécuter : télécharger
+et exécuter en une seule ligne est la forme exacte d'un « dropper » de logiciel
+malveillant, la commande est donc tuée avant de démarrer
+(`Trojan:Win32/Commando.A!ml` ; PowerShell répond simplement *Accès refusé*).
+Cette détection porte sur la forme de la commande, pas sur ce qu'elle
+télécharge — votre machine n'a rien d'anormal. Prenez le ZIP ci-dessus.
 
-```bat
-powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/Defacedz/claude-usage-widget/main/web-install.ps1 | iex"
-```
-
-Cette commande télécharge le dépôt dans un dossier temporaire et lance
-`Installer.ps1`. Si vous préférez lire avant d'exécuter — le bon réflexe face à
-n'importe quelle commande `| iex`, et plus encore pour un programme qui touche
-à vos identifiants — clonez le dépôt et double-cliquez sur `Installer.bat`.
-
-Dans les deux cas, la fenêtre affiche `[OK]` et le widget apparaît en bas à
-gauche. Clic droit pour la langue, l'opacité, le démarrage automatique et
-quitter.
+</details>
 
 ### Ce que fait l'installateur
 

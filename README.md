@@ -5,8 +5,8 @@ limits you have burned through, and when they reset.
 
 *Read this in [Français](README.fr.md).*
 
-<img src="docs/screenshot.png" alt="The widget in the Dark theme" width="254">
-<img src="docs/screenshot-ivory.png" alt="The widget in the Ivory theme" width="254">
+<img src="docs/screenshot.png" alt="The widget in the Dark theme" width="366">
+<img src="docs/screenshot-ivory.png" alt="The widget in the Ivory theme" width="366">
 
 It sits above the taskbar and never disappears behind it, because the
 executable is built with the `uiAccess` privilege — the same one the Magnifier
@@ -56,25 +56,36 @@ and the on-screen keyboard use.
 
 ## Install (Windows)
 
-Paste this into **PowerShell** and accept the administrator prompt:
+1. [**Download the repository as a ZIP**](https://github.com/Defacedz/claude-usage-widget/archive/refs/heads/main.zip)
+   (or *Code → Download ZIP* at the top of this page)
+2. Extract it anywhere
+3. Double-click **`Installer.bat`** and accept the administrator prompt
+
+Three clicks, nothing to type, and you can read every line before running it —
+the sensible habit for any installer, and doubly so for a program that touches
+your credentials.
+
+The window shows `[OK]` and the widget appears in the bottom-left corner.
+Right-click it for language, opacity, autostart and quit. Updating later takes
+one click: the widget watches this repository, turns its border orange when a
+newer version exists, and *Update available* in the right-click menu downloads
+and installs it.
+
+<details>
+<summary>One-line install (usually blocked by Defender)</summary>
 
 ```powershell
 irm https://raw.githubusercontent.com/Defacedz/claude-usage-widget/main/web-install.ps1 | iex
 ```
 
-Or from **cmd.exe**:
+Recent Microsoft Defender builds refuse to run this: download-and-execute in
+one line is the exact command shape of a malware dropper, so it is killed
+before it starts (`Trojan:Win32/Commando.A!ml`; PowerShell just reports
+*Access denied*). The detection is about the shape of the command, not about
+what it downloads — nothing is wrong with your machine. Use the ZIP above
+instead.
 
-```bat
-powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/Defacedz/claude-usage-widget/main/web-install.ps1 | iex"
-```
-
-That downloads this repository to a temporary folder and runs `Installer.ps1`.
-If you would rather see what you are running first — which is the sensible
-habit with any `| iex` command, and doubly so for a program that touches your
-credentials — clone the repository and double-click `Installer.bat` instead.
-
-Either way the window shows `[OK]` and the widget appears in the bottom-left
-corner. Right-click it for language, opacity, autostart and quit.
+</details>
 
 ### What the installer does
 
