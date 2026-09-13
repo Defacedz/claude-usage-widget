@@ -68,6 +68,10 @@ Trois clics, rien à taper, et vous pouvez lire chaque ligne avant de l'exécute
 le bon réflexe pour n'importe quel installateur, et plus encore pour un
 programme qui touche à vos identifiants.
 
+Widget fermé à la main ? Double-cliquez sur **`Launch.bat`** pour le relancer —
+sans réinstaller. S'il n'est pas encore installé, il propose de lancer
+l'installateur.
+
 La fenêtre affiche `[OK]` et le widget apparaît en bas à gauche. Clic droit
 pour la langue, l'opacité, le démarrage automatique et quitter. Les mises à
 jour suivantes tiennent en un clic : le widget surveille ce dépôt, son contour

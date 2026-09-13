@@ -65,6 +65,9 @@ Three clicks, nothing to type, and you can read every line before running it —
 the sensible habit for any installer, and doubly so for a program that touches
 your credentials.
 
+Closed the widget by hand? Double-click **`Launch.bat`** to bring it back — no
+reinstall needed. If it is not installed yet, it offers to run the installer.
+
 The window shows `[OK]` and the widget appears in the bottom-left corner.
 Right-click it for language, opacity, autostart and quit. Updating later takes
 one click: the widget watches this repository, turns its border orange when a
