@@ -467,7 +467,7 @@ namespace ClaudeWidgetApp
     {
         // Bump this when publishing: the update check compares it against the
         // same line in the repository's ClaudeWidget.cs.
-        public const string Version = "2026.09.15";
+        public const string Version = "2026.09.27";
         const string SourceUrl = "https://raw.githubusercontent.com/Defacedz/claude-usage-widget/main/ClaudeWidget.cs";
         public const string ArchiveUrl = "https://github.com/Defacedz/claude-usage-widget/archive/refs/heads/main.zip";
 
@@ -1891,6 +1891,14 @@ namespace ClaudeWidgetApp
                 _root.BorderBrush = B(_updateAvailable ? "#CCDA7756" : (stale ? "#CCE05252" : "#99E8A33D"));
                 _rows.Opacity = stale ? 0.45 : 1.0;
                 tips.Add(string.Format(L.FrozenFor, FmtAge(age), ErrText()));
+                // Say what to DO here too. With stale numbers still on screen
+                // this branch is the one people actually see - a widget sat
+                // red for four hours saying "frozen: session expired" and
+                // never once mentioned the sign-in entry one right-click away.
+                if (_lastErrCode == 401 || _lastErrCode == 403)
+                    tips.Add(L.HintSignIn);
+                else if (_lastErrCode == 429)
+                    tips.Add(Feed.Detect() == Feed.State.Foreign ? L.FeedHintBusy : L.FeedHint);
             }
             else
             {
@@ -1955,6 +1963,7 @@ namespace ClaudeWidgetApp
                 Dispatcher.BeginInvoke(new Action(delegate
                 {
                     _refreshBusy = false;
+                    bool wasSignedOut = _lastErrCode == 401 || _lastErrCode == 403;
                     if (u != null)
                     {
                         if (_lastErr != null) Api.Log("refresh recovered");
@@ -1984,6 +1993,10 @@ namespace ClaudeWidgetApp
                         else delay = TimeSpan.FromMinutes(5);
                         _nextApiAt = DateTime.Now + delay;
                     }
+                    // The sign-in entry is styled from the error state at
+                    // build time, so rebuild the menu when that state flips.
+                    bool nowSignedOut = _lastErrCode == 401 || _lastErrCode == 403;
+                    if (nowSignedOut != wasSignedOut) BuildMenu();
                     Redraw();
                 }));
             });
@@ -2117,6 +2130,7 @@ namespace ClaudeWidgetApp
                             _lastErr = null;
                             _lastApiCall = DateTime.MinValue;
                             _nextApiAt = DateTime.MinValue;
+                            BuildMenu();        // the sign-in entry drops its red
                             Redraw();
                             Refresh(true);
                         }
@@ -2879,7 +2893,15 @@ namespace ClaudeWidgetApp
             miDetail.Click += delegate { ShowLocalDetail(); };
             menu.Items.Add(miDetail);
 
+            // Red and bold while the session is expired: that is the one
+            // moment this entry is the answer, and it must not look like
+            // just another line of the menu.
             var miSign = new MenuItem { Header = L.MenuSignIn };
+            if (_lastErrCode == 401 || _lastErrCode == 403)
+            {
+                miSign.FontWeight = FontWeights.SemiBold;
+                miSign.Foreground = B("#E05252");
+            }
             miSign.Click += delegate { ShowSignIn(true); };
             menu.Items.Add(miSign);
 
