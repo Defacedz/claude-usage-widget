@@ -467,7 +467,7 @@ namespace ClaudeWidgetApp
     {
         // Bump this when publishing: the update check compares it against the
         // same line in the repository's ClaudeWidget.cs.
-        public const string Version = "2026.09.27";
+        public const string Version = "2026.09.28";
         const string SourceUrl = "https://raw.githubusercontent.com/Defacedz/claude-usage-widget/main/ClaudeWidget.cs";
         public const string ArchiveUrl = "https://github.com/Defacedz/claude-usage-widget/archive/refs/heads/main.zip";
 
@@ -673,6 +673,21 @@ namespace ClaudeWidgetApp
         // sign-in then failed for the very same reason.
         public static int LastOauthStatus;
 
+        // Seconds the server asked us to wait on the most recent 429, or 0.
+        // The usage endpoint now sends Retry-After (2882s seen 2026-09-28,
+        // an account-level limit); guessing a backoff when the server states
+        // the exact delay is both ruder and less honest on screen.
+        public static int LastRetryAfterSeconds;
+
+        static void NoteRetryAfter(HttpWebResponse hr)
+        {
+            LastRetryAfterSeconds = 0;
+            if (hr == null || (int)hr.StatusCode != 429) return;
+            int seconds;
+            if (int.TryParse(hr.Headers["Retry-After"], out seconds) && seconds > 0)
+                LastRetryAfterSeconds = seconds;
+        }
+
         static string HttpPost(string url, string body, string contentType)
         {
             var req = NewRequest(url);
@@ -729,6 +744,7 @@ namespace ClaudeWidgetApp
                         var hr = we.Response as HttpWebResponse;
                         int st = hr == null ? 0 : (int)hr.StatusCode;
                         LastOauthStatus = st;
+                        NoteRetryAfter(hr);
                         // without Close() the connection stays held by the ServicePoint
                         if (we.Response != null) we.Response.Close();
                         Log("token refresh failed (" + url + "): " +
@@ -811,6 +827,7 @@ namespace ClaudeWidgetApp
             {
                 var hr = we.Response as HttpWebResponse;
                 int code = hr == null ? 0 : (int)hr.StatusCode;
+                NoteRetryAfter(hr);
                 if (hr != null) hr.Close();
 
                 // Token rejected -> drop our cache (it may be stale) and retry
@@ -1883,7 +1900,15 @@ namespace ClaudeWidgetApp
                 // Past two missed cycles the numbers on screen mean nothing any
                 // more, so we fade them out to make the stall visible.
                 TimeSpan age = DateTime.Now - _lastTs;
-                bool stale = age.TotalMinutes >= 12;
+                // A 429 is a delay, not a breakdown: the numbers on screen are
+                // the last real ones and the widget heals by itself. Give it
+                // half an hour before calling them dead; anything else (dead
+                // token, network) stays at two missed cycles.
+                // ...and never red while the retry the server scheduled is
+                // still ahead of us: waiting as told is not being broken.
+                bool stale = _lastErrCode == 429
+                    ? (age.TotalMinutes >= 30 && DateTime.Now > _nextApiAt)
+                    : age.TotalMinutes >= 12;
                 // An available update outranks the failure colour: the person
                 // who most needs to see it is exactly the one whose widget is
                 // broken (the 2026-08 rate-limit wave proved it). The fade and
@@ -1986,8 +2011,23 @@ namespace ClaudeWidgetApp
                             // Rate limited - or a dead token, which does not
                             // heal in five minutes and whose hammering is
                             // precisely what triggers the 429 throttle.
+                            // First step is short on purpose: an isolated 429
+                            // (one blip in a day of clean polls, 2026-09-28)
+                            // used to wait 10 minutes for its first retry and
+                            // so ALWAYS crossed the 12-minute stale line -
+                            // every blip painted the widget red. Escalate only
+                            // when the failure repeats: 3, 10, 30, 60 minutes.
                             _apiStrikes = Math.Min(_apiStrikes + 1, 4);
-                            delay = TimeSpan.FromMinutes(Math.Min(60, 5 * (1 << _apiStrikes)));
+                            int[] steps = { 0, 3, 10, 30, 60 };
+                            delay = TimeSpan.FromMinutes(steps[_apiStrikes]);
+                            // When the server states the delay, that is the
+                            // delay - shown as-is in the band's countdown.
+                            int asked = Api.LastRetryAfterSeconds;
+                            if (code == 429 && asked > 0)
+                            {
+                                delay = TimeSpan.FromSeconds(Math.Min(asked + 5, 2 * 3600));
+                                Api.Log("server asks to retry in " + asked + "s");
+                            }
                         }
                         else if (code == 0) delay = TimeSpan.FromMinutes(1);
                         else delay = TimeSpan.FromMinutes(5);
