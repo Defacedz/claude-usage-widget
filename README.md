@@ -21,7 +21,7 @@ and the on-screen keyboard use.
   topmost so it cannot kick a game out of its display mode
 - Hover for the full breakdown, drag to move, position is remembered
 - Goes visibly stale — amber then red border, gauges fade — when the data is
-  more than 12 minutes old, so a frozen number never looks like a fresh one
+  more than 25 minutes old, so a frozen number never looks like a fresh one
 - Adjustable opacity, optional start with Windows
 - **English, Français, Español, Deutsch** — right-click → Language
 - **Two themes** — right-click → Theme: the original *Dark*, or *Ivory*, built
@@ -134,12 +134,14 @@ Two sources, tried in this order:
    are ignored once older than 10 minutes — when Claude Code is closed, the
    widget falls back to source 2.
 
-2. **The usage endpoint** (`/api/oauth/usage`), polled at most every 5
-   minutes. Since August 2026 it answers `429 Too Many Requests` much more
-   aggressively; the widget now backs off (10 → 20 → 40 → 60 minutes) instead
-   of retrying harder, keeps showing the last known numbers, and recovers on
-   its own. The one-minute retry only survives for *network* failures, where
-   it costs nothing remote and recovers fast after a wake from sleep.
+2. **The usage endpoint** (`/api/oauth/usage`), polled at most every 10
+   minutes — it carries a daily budget per account, and five-minute polling
+   was found sitting right on it. When it answers `429 Too Many Requests`
+   the widget waits exactly what the server's `Retry-After` asks (or 3, 10,
+   30, then 60 minutes when it says nothing), keeps showing the last known
+   numbers at full strength, and recovers on its own. The one-minute retry
+   only survives for *network* failures, where it costs nothing remote and
+   recovers fast after a wake from sleep.
 
 ## What it reads and writes
 

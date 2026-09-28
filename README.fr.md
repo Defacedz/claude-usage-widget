@@ -22,7 +22,7 @@ Loupe ou le clavier visuel.
   de son mode d'affichage
 - Survol pour le détail, glisser pour déplacer, position mémorisée
 - Vieillissement visible — contour orange puis rouge, jauges estompées — dès que
-  les données ont plus de 12 minutes : un chiffre figé ne ressemble jamais à un
+  les données ont plus de 25 minutes : un chiffre figé ne ressemble jamais à un
   chiffre frais
 - Opacité réglable, lancement au démarrage de Windows en option
 - **English, Français, Español, Deutsch** — clic droit → Langue
@@ -143,12 +143,14 @@ Deux sources, essayées dans cet ordre :
    rebascule sur la source 2.
 
 2. **Le point d'accès d'usage** (`/api/oauth/usage`), interrogé au plus toutes
-   les 5 minutes. Depuis août 2026 il répond `429 Too Many Requests` bien plus
-   agressivement ; le widget recule désormais (10 → 20 → 40 → 60 minutes) au
-   lieu d'insister plus fort, continue d'afficher les derniers chiffres
-   connus, et se rétablit seul. Le réessai à la minute ne subsiste que pour
-   les pannes *réseau*, où il ne coûte rien côté serveur et permet de repartir
-   vite après une sortie de veille.
+   les 10 minutes — il impose un budget quotidien par compte, et une cadence
+   de 5 minutes s'est révélée pile sur la limite. Quand il répond
+   `429 Too Many Requests`, le widget attend exactement ce que demande le
+   `Retry-After` du serveur (ou 3, 10, 30 puis 60 minutes s'il ne dit rien),
+   continue d'afficher les derniers chiffres connus sans les estomper, et se
+   rétablit seul. Le réessai à la minute ne subsiste que pour les pannes
+   *réseau*, où il ne coûte rien côté serveur et permet de repartir vite après
+   une sortie de veille.
 
 ## Ce qui est lu et écrit
 

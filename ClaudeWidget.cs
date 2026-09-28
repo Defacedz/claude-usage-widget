@@ -467,7 +467,7 @@ namespace ClaudeWidgetApp
     {
         // Bump this when publishing: the update check compares it against the
         // same line in the repository's ClaudeWidget.cs.
-        public const string Version = "2026.09.28";
+        public const string Version = "2026.09.29";
         const string SourceUrl = "https://raw.githubusercontent.com/Defacedz/claude-usage-widget/main/ClaudeWidget.cs";
         public const string ArchiveUrl = "https://github.com/Defacedz/claude-usage-widget/archive/refs/heads/main.zip";
 
@@ -1906,9 +1906,10 @@ namespace ClaudeWidgetApp
                 // token, network) stays at two missed cycles.
                 // ...and never red while the retry the server scheduled is
                 // still ahead of us: waiting as told is not being broken.
+                // "Two missed cycles" at the ten-minute cadence is 25 minutes.
                 bool stale = _lastErrCode == 429
                     ? (age.TotalMinutes >= 30 && DateTime.Now > _nextApiAt)
-                    : age.TotalMinutes >= 12;
+                    : age.TotalMinutes >= 25;
                 // An available update outranks the failure colour: the person
                 // who most needs to see it is exactly the one whose widget is
                 // broken (the 2026-08 rate-limit wave proved it). The fade and
@@ -1999,7 +2000,12 @@ namespace ClaudeWidgetApp
                         _lastTs = viaFeed ? feedTs : DateTime.Now;
                         _lastErr = null; _lastErrCode = 0;
                         _apiStrikes = 0;
-                        _nextApiAt = DateTime.Now + TimeSpan.FromMinutes(5);
+                        // Ten minutes, not five: the endpoint carries an
+                        // account-level daily budget (429 with a 48-minute
+                        // Retry-After landed at 23:31 after a clean day of
+                        // five-minute polls, 2026-09-28). 144 calls a day
+                        // sits well under it; 288 sat right on the line.
+                        _nextApiAt = DateTime.Now + TimeSpan.FromMinutes(10);
                     }
                     else
                     {
@@ -2030,7 +2036,7 @@ namespace ClaudeWidgetApp
                             }
                         }
                         else if (code == 0) delay = TimeSpan.FromMinutes(1);
-                        else delay = TimeSpan.FromMinutes(5);
+                        else delay = TimeSpan.FromMinutes(10);
                         _nextApiAt = DateTime.Now + delay;
                     }
                     // The sign-in entry is styled from the error state at
