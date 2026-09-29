@@ -70,6 +70,10 @@ namespace ClaudeWidgetApp
         // run) means "never decided": the startup shortcut gets created.
         // Only an explicit false - the user unticked the menu - blocks it.
         [DataMember] public bool? AutoStart;
+        // Read the limits from a one-token message while the usage endpoint
+        // is rate-limited. Null (never decided) means on; only a stored
+        // false - the user unticked the menu entry - turns it off.
+        [DataMember] public bool? MessageFallback;
     }
 
     // ---------- themes ----------
@@ -180,6 +184,9 @@ namespace ClaudeWidgetApp
         public string ErrNotSignedIn, ErrBadResponse;
 
         public string SourceFeed;       // tooltip line when the numbers came from the feed
+        public string SourceMessage;    // tooltip line when they came from the message fallback
+        public string MenuMessageFallback;  // checkable menu entry
+        public string TipMessageFallback;   // hover text of that entry: what it does, what it risks
         public string ErrRateLimited;   // friendlier than the raw HTTP 429 message
         public string ErrExpired;       // friendlier than the raw HTTP 401/403 message
         public string FeedHint;         // appended to the offline message on HTTP 429
@@ -244,6 +251,9 @@ namespace ClaudeWidgetApp
                 ErrNotSignedIn = "Claude Code is not signed in (run it once)",
                 ErrBadResponse = "Unreadable API response",
                 SourceFeed = "source: Claude Code (local feed)",
+                SourceMessage = "source: minimal message (usage endpoint rate-limited)",
+                MenuMessageFallback = "Fallback while rate-limited",
+                TipMessageFallback = "When Anthropic's usage endpoint is rate-limited (429), read\nyour limits from a tiny message to Claude instead: Haiku, 9 tokens,\nonly while the block lasts.\n\nIt is a real request sent with your subscription token from a\nthird-party app - a use Anthropic may not allow. Untick to never do it.",
                 ErrRateLimited = "API rate limited (429)",
                 ErrExpired = "Session expired",
                 FeedHint = "Restart Claude Code",
@@ -295,6 +305,9 @@ namespace ClaudeWidgetApp
                 ErrNotSignedIn = "Claude Code n'est pas connecté (lance-le une fois)",
                 ErrBadResponse = "Réponse de l'API illisible",
                 SourceFeed = "source : Claude Code (flux local)",
+                SourceMessage = "source : message minimal (usage limité)",
+                MenuMessageFallback = "Secours pendant les blocages",
+                TipMessageFallback = "Quand le point d'accès d'usage d'Anthropic est bloqué (429),\nlire tes limites dans un message minimal envoyé à Claude : Haiku,\n9 jetons, seulement tant que dure le blocage.\n\nC'est une vraie requête envoyée avec ton jeton d'abonnement depuis\nune appli tierce - un usage qu'Anthropic peut ne pas autoriser.\nDécoche pour ne jamais le faire.",
                 ErrRateLimited = "API limitée (429)",
                 ErrExpired = "Session expirée",
                 FeedHint = "Relance Claude Code",
@@ -346,6 +359,9 @@ namespace ClaudeWidgetApp
                 ErrNotSignedIn = "Claude Code no ha iniciado sesión (ejecútalo una vez)",
                 ErrBadResponse = "Respuesta de la API ilegible",
                 SourceFeed = "fuente: Claude Code (local)",
+                SourceMessage = "fuente: mensaje mínimo (uso limitado)",
+                MenuMessageFallback = "Respaldo durante bloqueos",
+                TipMessageFallback = "Cuando el endpoint de uso de Anthropic está limitado (429),\nleer sus límites de un mensaje mínimo enviado a Claude: Haiku,\n9 tokens, solo mientras dure el bloqueo.\n\nEs una petición real enviada con su token de suscripción desde una\napp de terceros - un uso que Anthropic podría no permitir.\nDesmarque para no hacerlo nunca.",
                 ErrRateLimited = "API limitada (429)",
                 ErrExpired = "Sesión caducada",
                 FeedHint = "Reinicie Claude Code",
@@ -397,6 +413,9 @@ namespace ClaudeWidgetApp
                 ErrNotSignedIn = "Claude Code ist nicht angemeldet (einmal starten)",
                 ErrBadResponse = "Unlesbare API-Antwort",
                 SourceFeed = "Quelle: Claude Code (lokal)",
+                SourceMessage = "Quelle: minimale Nachricht (Nutzung gedrosselt)",
+                MenuMessageFallback = "Ausweichweg bei Drosselung",
+                TipMessageFallback = "Wenn Anthropics Nutzungs-Endpunkt gedrosselt ist (429),\ndie Limits aus einer minimalen Nachricht an Claude lesen: Haiku,\n9 Tokens, nur solange die Sperre dauert.\n\nDas ist eine echte Anfrage mit dem Abo-Token aus einer\nDrittanbieter-App - eine Nutzung, die Anthropic womöglich nicht\nerlaubt. Abwählen, um das nie zu tun.",
                 ErrRateLimited = "API begrenzt (429)",
                 ErrExpired = "Sitzung abgelaufen",
                 FeedHint = "Claude Code neu starten",
@@ -462,7 +481,7 @@ namespace ClaudeWidgetApp
     {
         // Bump this when publishing: the update check compares it against the
         // same line in the repository's ClaudeWidget.cs.
-        public const string Version = "2026.09.30";
+        public const string Version = "2026.10.01";
         const string SourceUrl = "https://raw.githubusercontent.com/Defacedz/claude-usage-widget/main/ClaudeWidget.cs";
         public const string ArchiveUrl = "https://github.com/Defacedz/claude-usage-widget/archive/refs/heads/main.zip";
 
@@ -866,6 +885,83 @@ namespace ClaudeWidgetApp
                 if (u == null) throw new Exception(I18n.T.ErrBadResponse);
                 return u;
             }
+        }
+
+        // ---------- fallback: the limits a real message reports ----------
+        // The usage endpoint sits behind an account-level throttle (429 with
+        // Retry-After up to an hour, 2026-09-28/29). Every answer from the
+        // Messages API, though, carries the same numbers in its
+        // anthropic-ratelimit-unified-* headers - that is where Claude Code
+        // reads them. So while the endpoint is blocked, a one-token Haiku
+        // message ("." in, 1 token out: 9 tokens) fetches the limits.
+        //
+        // The trade-off is real and stated in the menu tooltip: this is an
+        // actual request sent with the subscription token from a third-party
+        // app, which Anthropic may not allow. It runs ONLY during a block and
+        // the user can untick it.
+        const string MessagesUrl = "https://api.anthropic.com/v1/messages";
+        const string ProbeModel = "claude-haiku-4-5-20251001";
+
+        public static Usage GetUsageViaMessage()
+        {
+            string tok = GetToken();
+            var req = NewRequest(MessagesUrl);
+            req.Method = "POST";
+            req.ContentType = "application/json";
+            req.Headers["Authorization"] = "Bearer " + tok;
+            req.Headers["anthropic-version"] = "2023-06-01";
+            req.Headers["anthropic-beta"] = Beta;
+            byte[] body = Encoding.UTF8.GetBytes(
+                "{\"model\":\"" + ProbeModel + "\",\"max_tokens\":1," +
+                "\"messages\":[{\"role\":\"user\",\"content\":\".\"}]}");
+            req.ContentLength = body.Length;
+            using (var s = req.GetRequestStream()) s.Write(body, 0, body.Length);
+
+            HttpWebResponse resp;
+            try { resp = (HttpWebResponse)req.GetResponse(); }
+            catch (WebException we)
+            {
+                // A 429 here is the subscription limit itself being hit - and
+                // it still carries the headers. Anything without them (dead
+                // token, network) is a genuine failure for the caller.
+                resp = we.Response as HttpWebResponse;
+                if (resp == null) throw;
+                Usage fromError = UsageFromHeaders(resp);
+                resp.Close();
+                if (fromError == null) throw;
+                return fromError;
+            }
+            using (resp)
+            {
+                Usage u = UsageFromHeaders(resp);
+                if (u == null) throw new Exception(I18n.T.ErrBadResponse);
+                return u;
+            }
+        }
+
+        static Usage UsageFromHeaders(HttpWebResponse resp)
+        {
+            Limit five = LimitFromHeaders(resp, "5h");
+            Limit seven = LimitFromHeaders(resp, "7d");
+            if (five == null && seven == null) return null;
+            return new Usage { five_hour = five, seven_day = seven };
+        }
+
+        // Headers give utilization as a 0..1 fraction and the reset as unix
+        // seconds; the widget works in percent and ISO-8601, like the usage
+        // endpoint.
+        static Limit LimitFromHeaders(HttpWebResponse resp, string window)
+        {
+            string prefix = "anthropic-ratelimit-unified-" + window + "-";
+            double fraction;
+            if (!double.TryParse(resp.Headers[prefix + "utilization"], NumberStyles.Float,
+                                 CultureInfo.InvariantCulture, out fraction)) return null;
+            var limit = new Limit { utilization = fraction * 100.0 };
+            long reset;
+            if (long.TryParse(resp.Headers[prefix + "reset"], out reset) && reset > 0)
+                limit.resets_at = DateTimeOffset.FromUnixTimeSeconds(reset)
+                                                .ToString("o", CultureInfo.InvariantCulture);
+            return limit;
         }
 
         // ---------- interactive sign-in (OAuth code flow with PKCE) ----------
@@ -1433,6 +1529,10 @@ namespace ClaudeWidgetApp
         // file costs nothing), but the API is only called when the clock
         // reaches _nextApiAt - pushed further out on each 429.
         DateTime _nextApiAt = DateTime.MinValue;
+        // The usage endpoint alone stays untouched until then (its own 429).
+        // The message fallback, if allowed, keeps the normal cadence meanwhile.
+        DateTime _usageBlockedUntil = DateTime.MinValue;
+        bool _viaMessage;
         DateTime _lastApiCall = DateTime.MinValue;
         int _apiStrikes;
         bool _refreshBusy;
@@ -1899,6 +1999,7 @@ namespace ClaudeWidgetApp
             AddPart(L.Short7d, L.Week, _last.seven_day, tips);
             tips.Add(string.Format(L.Updated, _lastTs.ToString("HH:mm")));
             if (_viaFeed) tips.Add(L.SourceFeed);
+            else if (_viaMessage) tips.Add(L.SourceMessage);
             // Only ever reached with fresh numbers (see Redraw), so the border
             // has a single job left: Claude-orange when an update is out.
             _root.BorderBrush = B(_updateAvailable ? "#CCDA7756" : Theme.Current.Border);
@@ -1925,6 +2026,9 @@ namespace ClaudeWidgetApp
                 string err = null;
                 int code = 0;
                 bool viaFeed = false;
+                bool viaMessage = false;
+                bool calledUsage = false;       // the usage endpoint was really asked
+                bool fallbackOn = _cfg.MessageFallback != false;
                 DateTime feedTs;
 
                 u = Feed.TryRead(out feedTs);
@@ -1939,22 +2043,37 @@ namespace ClaudeWidgetApp
                          (DateTime.Now >= _nextApiAt))
                 {
                     _lastApiCall = DateTime.Now;
-                    try { u = Api.GetUsage(); }
-                    catch (WebException we)
+                    // The usage endpoint is never asked while it has told us
+                    // to wait: that is what keeps its throttle alive.
+                    if (DateTime.Now >= _usageBlockedUntil)
                     {
-                        var hr = we.Response as HttpWebResponse;
-                        code = hr == null ? 0 : (int)hr.StatusCode;
-                        if (hr != null) hr.Close();
-                        // Keep the RAW message only. Translation happens at
-                        // render time (ErrText): storing a localized string
-                        // here froze it in whatever language was active when
-                        // the failure happened, and the band ended up half
-                        // one language, half another.
-                        err = we.Message;
+                        calledUsage = true;
+                        try { u = Api.GetUsage(); }
+                        catch (WebException we)
+                        {
+                            var hr = we.Response as HttpWebResponse;
+                            code = hr == null ? 0 : (int)hr.StatusCode;
+                            if (hr != null) hr.Close();
+                            // Keep the RAW message only. Translation happens at
+                            // render time (ErrText): storing a localized string
+                            // here froze it in whatever language was active when
+                            // the failure happened, and the band ended up half
+                            // one language, half another.
+                            err = we.Message;
+                        }
+                        catch (Api.RateLimitedException) { code = 429; err = I18n.T.ErrRateLimited; }
+                        catch (Api.SignedOutException) { code = 401; err = I18n.T.ErrExpired; }
+                        catch (Exception e) { err = e.Message; }
                     }
-                    catch (Api.RateLimitedException) { code = 429; err = I18n.T.ErrRateLimited; }
-                    catch (Api.SignedOutException) { code = 401; err = I18n.T.ErrExpired; }
-                    catch (Exception e) { err = e.Message; }
+                    else { code = 429; err = I18n.T.ErrRateLimited; }
+
+                    // Blocked, and the user allows it: read the same numbers
+                    // from the headers of a one-token message.
+                    if (u == null && code == 429 && fallbackOn)
+                    {
+                        try { u = Api.GetUsageViaMessage(); viaMessage = true; }
+                        catch (Exception e) { Api.Log("message fallback failed: " + e.Message); }
+                    }
                 }
                 else { _refreshBusy = false; return; }   // between API slots, nothing to do
 
@@ -1962,16 +2081,40 @@ namespace ClaudeWidgetApp
                 {
                     _refreshBusy = false;
                     bool wasSignedOut = _lastErrCode == 401 || _lastErrCode == 403;
+
+                    // A real 429 from the usage endpoint sets how long it
+                    // stays untouched: what the server asks, else 3, 10, 30,
+                    // then 60 minutes. The fallback never shortens that.
+                    if (calledUsage && code == 429)
+                    {
+                        _apiStrikes = Math.Min(_apiStrikes + 1, 4);
+                        int[] steps = { 0, 3, 10, 30, 60 };
+                        TimeSpan block = TimeSpan.FromMinutes(steps[_apiStrikes]);
+                        int asked = Api.LastRetryAfterSeconds;
+                        if (asked > 0)
+                        {
+                            block = TimeSpan.FromSeconds(Math.Min(asked + 5, 2 * 3600));
+                            Api.Log("server asks to retry in " + asked + "s");
+                        }
+                        _usageBlockedUntil = DateTime.Now + block;
+                    }
+
                     if (u != null)
                     {
                         if (_lastErr != null) Api.Log("refresh recovered");
-                        if (viaFeed != _viaFeed)
-                            Api.Log("usage source: " + (viaFeed ? "local feed" : "API"));
+                        string source = viaFeed ? "local feed" : (viaMessage ? "message fallback" : "API");
+                        if (viaFeed != _viaFeed || viaMessage != _viaMessage)
+                            Api.Log("usage source: " + source);
                         _viaFeed = viaFeed;
+                        _viaMessage = viaMessage;
                         _last = u;
                         _lastTs = viaFeed ? feedTs : DateTime.Now;
                         _lastErr = null; _lastErrCode = 0;
-                        _apiStrikes = 0;
+                        if (!viaMessage)
+                        {
+                            _apiStrikes = 0;
+                            _usageBlockedUntil = DateTime.MinValue;
+                        }
                         // Ten minutes, not five: the endpoint carries an
                         // account-level daily budget (429 with a 48-minute
                         // Retry-After landed at 23:31 after a clean day of
@@ -1983,29 +2126,27 @@ namespace ClaudeWidgetApp
                     {
                         Api.Log("refresh failed: " + err + (code != 0 ? " (HTTP " + code + ")" : ""));
                         _lastErr = err; _lastErrCode = code;
+                        _viaMessage = false;
                         TimeSpan delay;
-                        if (code == 429 || code == 401 || code == 403)
+                        if (code == 429)
                         {
-                            // Rate limited - or a dead token, which does not
-                            // heal in five minutes and whose hammering is
-                            // precisely what triggers the 429 throttle.
-                            // First step is short on purpose: an isolated 429
-                            // (one blip in a day of clean polls, 2026-09-28)
-                            // used to wait 10 minutes for its first retry and
-                            // so ALWAYS crossed the 12-minute stale line -
-                            // every blip painted the widget red. Escalate only
-                            // when the failure repeats: 3, 10, 30, 60 minutes.
+                            // Blocked and no numbers: with the fallback on,
+                            // try it again at the normal cadence (sooner if
+                            // the block ends first); without it, wait for the
+                            // block. The band counts down to _nextApiAt.
+                            TimeSpan untilUnblock = _usageBlockedUntil - DateTime.Now;
+                            if (untilUnblock < TimeSpan.Zero) untilUnblock = TimeSpan.FromMinutes(3);
+                            delay = fallbackOn && untilUnblock > TimeSpan.FromMinutes(10)
+                                ? TimeSpan.FromMinutes(10) : untilUnblock;
+                        }
+                        else if (code == 401 || code == 403)
+                        {
+                            // A dead token does not heal in minutes, and
+                            // hammering with it is precisely what triggers
+                            // the throttle: 3, 10, 30, then 60 minutes.
                             _apiStrikes = Math.Min(_apiStrikes + 1, 4);
                             int[] steps = { 0, 3, 10, 30, 60 };
                             delay = TimeSpan.FromMinutes(steps[_apiStrikes]);
-                            // When the server states the delay, that is the
-                            // delay - shown as-is in the band's countdown.
-                            int asked = Api.LastRetryAfterSeconds;
-                            if (code == 429 && asked > 0)
-                            {
-                                delay = TimeSpan.FromSeconds(Math.Min(asked + 5, 2 * 3600));
-                                Api.Log("server asks to retry in " + asked + "s");
-                            }
                         }
                         else if (code == 0) delay = TimeSpan.FromMinutes(1);
                         else delay = TimeSpan.FromMinutes(10);
@@ -2922,6 +3063,31 @@ namespace ClaudeWidgetApp
             }
             miSign.Click += delegate { ShowSignIn(true); };
             menu.Items.Add(miSign);
+
+            // Message fallback: on by default, one click to turn off. The
+            // hover text says plainly what it does AND what it risks, in the
+            // widget's language - the choice has to be an informed one.
+            var miFallback = new MenuItem
+            {
+                Header = L.MenuMessageFallback,
+                IsCheckable = true,
+                IsChecked = _cfg.MessageFallback != false,
+                ToolTip = L.TipMessageFallback
+            };
+            ToolTipService.SetShowDuration(miFallback, 60000);
+            miFallback.Click += delegate
+            {
+                _cfg.MessageFallback = miFallback.IsChecked;
+                SaveConfig();
+                Api.Log("message fallback " + (miFallback.IsChecked ? "on" : "off"));
+                // Turned on during a block: use it now, not in ten minutes.
+                if (miFallback.IsChecked && _lastErrCode == 429)
+                {
+                    _nextApiAt = DateTime.MinValue;
+                    Refresh(false);
+                }
+            };
+            menu.Items.Add(miFallback);
 
             var miRepl = new MenuItem { Header = L.MenuMoveBottomLeft };
             miRepl.Click += delegate

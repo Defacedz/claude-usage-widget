@@ -122,7 +122,7 @@ manual install and uninstall: [`mac/README.md`](mac/README.md).
 
 ## Where the numbers come from
 
-Two sources, tried in this order:
+Three sources, tried in this order:
 
 1. **The local feed.** Claude Code pushes a JSON blob to its configured
    `statusLine` command on every turn, and that blob carries the same 5-hour
@@ -145,6 +145,16 @@ Two sources, tried in this order:
    numbers at full strength, and recovers on its own. The one-minute retry
    only survives for *network* failures, where it costs nothing remote and
    recovers fast after a wake from sleep.
+
+3. **A one-token message**, only while the usage endpoint is rate-limited.
+   Every reply from the Messages API carries the same 5-hour and 7-day numbers
+   in its `anthropic-ratelimit-unified-*` headers — that is where Claude Code
+   reads them. So during a block, the widget sends Haiku a single `.` and
+   reads the headers of the answer: 9 tokens per check, taken from your plan.
+   **This is a real request sent with your subscription token from a
+   third-party app, which Anthropic may not allow.** It is on by default and
+   one click away: right-click → *Fallback while rate-limited*; hovering the
+   entry repeats this warning in the widget's language.
 
 ## What it reads and writes
 

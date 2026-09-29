@@ -129,7 +129,7 @@ Détails, installation manuelle et désinstallation :
 
 ## D'où viennent les chiffres
 
-Deux sources, essayées dans cet ordre :
+Trois sources, essayées dans cet ordre :
 
 1. **Le flux local.** Claude Code pousse un blob JSON vers sa commande
    `statusLine` à chaque tour, et ce blob porte les mêmes chiffres 5 h et 7 j
@@ -153,6 +153,17 @@ Deux sources, essayées dans cet ordre :
    rétablit seul. Le réessai à la minute ne subsiste que pour les pannes
    *réseau*, où il ne coûte rien côté serveur et permet de repartir vite après
    une sortie de veille.
+
+3. **Un message d'un seul jeton**, seulement pendant que le point d'accès
+   d'usage est bloqué. Chaque réponse de l'API Messages porte les mêmes
+   chiffres 5 h et 7 j dans ses en-têtes `anthropic-ratelimit-unified-*` —
+   c'est là que Claude Code les lit. Pendant un blocage, le widget envoie donc
+   un simple `.` à Haiku et lit les en-têtes de la réponse : 9 jetons par
+   vérification, pris sur votre abonnement. **C'est une vraie requête envoyée
+   avec votre jeton d'abonnement depuis une application tierce, ce
+   qu'Anthropic peut ne pas autoriser.** Activé par défaut, désactivable d'un
+   clic : clic droit → *Secours pendant les blocages* ; le survol de l'entrée
+   répète cet avertissement dans la langue du widget.
 
 ## Ce qui est lu et écrit
 
