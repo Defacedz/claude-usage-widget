@@ -21,9 +21,11 @@ Loupe ou le clavier visuel.
   de se remettre au premier plan — elle ne peut donc plus faire sortir un jeu
   de son mode d'affichage
 - Survol pour le détail, glisser pour déplacer, position mémorisée
-- Vieillissement visible — contour orange puis rouge, jauges estompées — dès que
-  les données ont plus de 25 minutes : un chiffre figé ne ressemble jamais à un
-  chiffre frais
+- **N'affiche jamais un chiffre périmé.** Dès qu'un appel échoue, les jauges
+  laissent place à la raison et à la suite (`API limitée (429) — réessai auto
+  dans 37 min`, `Session expirée — clic droit : Se connecter`). Un chiffre figé
+  ressemble à un chiffre frais ; une phrase, non. Le contour n'a plus qu'un seul
+  sens : orange Claude quand une mise à jour est disponible
 - Opacité réglable, lancement au démarrage de Windows en option
 - **English, Français, Español, Deutsch** — clic droit → Langue
 - **Deux thèmes** — clic droit → Thème : le *Sombre* d'origine, ou *Ivoire*,

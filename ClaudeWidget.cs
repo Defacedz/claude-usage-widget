@@ -153,7 +153,6 @@ namespace ClaudeWidgetApp
 
         public string Loading;
         public string Offline;          // {0} = error message
-        public string FrozenFor;        // {0} = age, {1} = error message
         public string Updated;          // {0} = HH:mm
         public string ResetsIn;         // {0} = duration
         public string Colon;            // French puts a space before the colon
@@ -215,7 +214,6 @@ namespace ClaudeWidgetApp
                 Code = "en", Native = "English",
                 Loading = "loading...",
                 Offline = "Offline: {0}",
-                FrozenFor = "Frozen for {0}: {1}",
                 Updated = "updated {0}",
                 ResetsIn = "resets in {0}",
                 Colon = ": ",
@@ -267,7 +265,6 @@ namespace ClaudeWidgetApp
                 Code = "fr", Native = "Français",
                 Loading = "chargement...",
                 Offline = "Hors ligne : {0}",
-                FrozenFor = "Figé depuis {0} : {1}",
                 Updated = "maj {0}",
                 ResetsIn = "reset dans {0}",
                 Colon = " : ",
@@ -319,7 +316,6 @@ namespace ClaudeWidgetApp
                 Code = "es", Native = "Español",
                 Loading = "cargando...",
                 Offline = "Sin conexión: {0}",
-                FrozenFor = "Congelado desde hace {0}: {1}",
                 Updated = "act. {0}",
                 ResetsIn = "se reinicia en {0}",
                 Colon = ": ",
@@ -371,7 +367,6 @@ namespace ClaudeWidgetApp
                 Code = "de", Native = "Deutsch",
                 Loading = "lädt...",
                 Offline = "Offline: {0}",
-                FrozenFor = "Eingefroren seit {0}: {1}",
                 Updated = "akt. {0}",
                 ResetsIn = "zurückgesetzt in {0}",
                 Colon = ": ",
@@ -467,7 +462,7 @@ namespace ClaudeWidgetApp
     {
         // Bump this when publishing: the update check compares it against the
         // same line in the repository's ClaudeWidget.cs.
-        public const string Version = "2026.09.29";
+        public const string Version = "2026.09.30";
         const string SourceUrl = "https://raw.githubusercontent.com/Defacedz/claude-usage-widget/main/ClaudeWidget.cs";
         public const string ArchiveUrl = "https://github.com/Defacedz/claude-usage-widget/archive/refs/heads/main.zip";
 
@@ -1577,7 +1572,9 @@ namespace ClaudeWidgetApp
                 t2.Start();
                 // redraw every minute so the countdowns stay alive
                 var t3 = new DispatcherTimer { Interval = TimeSpan.FromSeconds(60) };
-                t3.Tick += delegate { if (_last != null) Render(); };
+                // Redraw() rather than Render(): the failure band carries a
+                // countdown ("auto-retry in 37 min") that has to tick too.
+                t3.Tick += delegate { Redraw(); };
                 t3.Start();
                 CheckUpdate();
                 var t4 = new DispatcherTimer { Interval = TimeSpan.FromHours(6) };
@@ -1859,9 +1856,16 @@ namespace ClaudeWidgetApp
             return _lastErr;
         }
 
+        // Numbers on screen are ALWAYS current numbers. The moment a refresh
+        // fails, the band replaces them with the reason and what happens
+        // next - never a stale figure dressed up with a coloured border.
+        // Frozen numbers read as fresh ones; a plain "rate limited, retry in
+        // 37 min" does not. (Author's rule, 2026-09-29, and it also retires
+        // the amber "recent failure" border, which was one shade away from
+        // the orange "update available" one.)
         void Redraw()
         {
-            if (_last != null) Render();
+            if (_last != null && _lastErr == null) Render();
             else
             {
                 string msg = _lastErr == null ? L.Loading : string.Format(L.Offline, ErrText());
@@ -1895,42 +1899,10 @@ namespace ClaudeWidgetApp
             AddPart(L.Short7d, L.Week, _last.seven_day, tips);
             tips.Add(string.Format(L.Updated, _lastTs.ToString("HH:mm")));
             if (_viaFeed) tips.Add(L.SourceFeed);
-            if (_lastErr != null)
-            {
-                // Past two missed cycles the numbers on screen mean nothing any
-                // more, so we fade them out to make the stall visible.
-                TimeSpan age = DateTime.Now - _lastTs;
-                // A 429 is a delay, not a breakdown: the numbers on screen are
-                // the last real ones and the widget heals by itself. Give it
-                // half an hour before calling them dead; anything else (dead
-                // token, network) stays at two missed cycles.
-                // ...and never red while the retry the server scheduled is
-                // still ahead of us: waiting as told is not being broken.
-                // "Two missed cycles" at the ten-minute cadence is 25 minutes.
-                bool stale = _lastErrCode == 429
-                    ? (age.TotalMinutes >= 30 && DateTime.Now > _nextApiAt)
-                    : age.TotalMinutes >= 25;
-                // An available update outranks the failure colour: the person
-                // who most needs to see it is exactly the one whose widget is
-                // broken (the 2026-08 rate-limit wave proved it). The fade and
-                // the tooltip keep saying the data is stale.
-                _root.BorderBrush = B(_updateAvailable ? "#CCDA7756" : (stale ? "#CCE05252" : "#99E8A33D"));
-                _rows.Opacity = stale ? 0.45 : 1.0;
-                tips.Add(string.Format(L.FrozenFor, FmtAge(age), ErrText()));
-                // Say what to DO here too. With stale numbers still on screen
-                // this branch is the one people actually see - a widget sat
-                // red for four hours saying "frozen: session expired" and
-                // never once mentioned the sign-in entry one right-click away.
-                if (_lastErrCode == 401 || _lastErrCode == 403)
-                    tips.Add(L.HintSignIn);
-                else if (_lastErrCode == 429)
-                    tips.Add(Feed.Detect() == Feed.State.Foreign ? L.FeedHintBusy : L.FeedHint);
-            }
-            else
-            {
-                _root.BorderBrush = B(_updateAvailable ? "#CCDA7756" : Theme.Current.Border);
-                _rows.Opacity = 1.0;
-            }
+            // Only ever reached with fresh numbers (see Redraw), so the border
+            // has a single job left: Claude-orange when an update is out.
+            _root.BorderBrush = B(_updateAvailable ? "#CCDA7756" : Theme.Current.Border);
+            _rows.Opacity = 1.0;
             if (_updateAvailable) tips.Add(L.MenuUpdate);
             _root.ToolTip = string.Join(Environment.NewLine, tips.ToArray());
         }

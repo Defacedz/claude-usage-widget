@@ -20,8 +20,11 @@ and the on-screen keyboard use.
   the foreground, including borderless-fullscreen, and stops re-asserting
   topmost so it cannot kick a game out of its display mode
 - Hover for the full breakdown, drag to move, position is remembered
-- Goes visibly stale — amber then red border, gauges fade — when the data is
-  more than 25 minutes old, so a frozen number never looks like a fresh one
+- **Never shows a stale number.** The moment a refresh fails, the gauges give
+  way to the reason and what happens next (`API rate limited (429) — auto-retry
+  in 37 min`, `Session expired — right-click: Sign in`). A frozen figure looks
+  exactly like a fresh one; a plain sentence does not. The border has one
+  meaning only: Claude-orange when an update is available
 - Adjustable opacity, optional start with Windows
 - **English, Français, Español, Deutsch** — right-click → Language
 - **Two themes** — right-click → Theme: the original *Dark*, or *Ivory*, built
